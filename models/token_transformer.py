@@ -7,7 +7,7 @@
 Take the standard Transformer as T2T Transformer
 """
 import torch.nn as nn
-from layers import DropPath
+from timm.models.layers import DropPath
 from .transformer_block import Mlp
 
 

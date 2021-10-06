@@ -9,7 +9,7 @@ Borrow from timm(https://github.com/rwightman/pytorch-image-models)
 import torch
 import torch.nn as nn
 import numpy as np
-from layers import DropPath
+from timm.models.layers import DropPath
 
 
 class Mlp(nn.Module):

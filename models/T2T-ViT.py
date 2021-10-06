@@ -9,7 +9,7 @@ T2T-ViT
 import torch
 import torch.nn as nn
 
-from layers import trunc_normal_
+from timm.models.layers import trunc_normal_
 import numpy as np
 from .token_transformer import Token_transformer
 from .token_performer import Token_performer
