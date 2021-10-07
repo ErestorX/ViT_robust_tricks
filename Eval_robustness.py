@@ -10,7 +10,7 @@ import os
 tested_models = ['vit_tiny_patch16_224']
 
 
-def get_test_loader():
+def get_val_loader():
     distributed = False
     if 'WORLD_SIZE' in os.environ:
         distributed = int(os.environ['WORLD_SIZE']) > 1
@@ -103,7 +103,7 @@ def validate(model, loader, loss_fn, amp_autocast=suppress, log_suffix=''):
 
 
 def validate_attack(model, loader, loss_fn, amp_autocast=suppress, log_suffix=''):
-    epsilonMax, clipMin, clipMax, targeted = 0.031, -1.0, 1.0, False
+    epsilonMax = 0.03
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
@@ -113,71 +113,64 @@ def validate_attack(model, loader, loss_fn, amp_autocast=suppress, log_suffix=''
 
     end = time.time()
     last_idx = len(loader) - 1
-    with torch.no_grad():
-        for batch_idx, (input, target) in enumerate(loader):
-            last_batch = batch_idx == last_idx
+    for batch_idx, (input, target) in enumerate(loader):
+        last_batch = batch_idx == last_idx
 
-            with amp_autocast():
-                xDataTemp = input
-                xDataTemp.requires_grad = True
-                output = model(xDataTemp)
-                model.zero_grad()
-                cost = loss_fn(output, target)
-                cost.backward()
-                signDataGrad = xDataTemp.grad.data.sign()
-                if targeted:
-                    perturbedImage = input - epsilonMax * signDataGrad
-                else:
-                    perturbedImage = input + epsilonMax * signDataGrad
-                perturbedImage = torch.clamp(perturbedImage, clipMin, clipMax)
-                output = model(perturbedImage)
-            if isinstance(output, (tuple, list)):
-                output = output[0]
+        with amp_autocast():
+            input.requires_grad = True
+            output = model(input)
+            cost = loss_fn(output, target)
+            grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+            perturbedImage = input + epsilonMax * grad.sign()
+            perturbedImage = torch.clamp(perturbedImage, -1, 1)
+            output = model(perturbedImage)
+        if isinstance(output, (tuple, list)):
+            output = output[0]
 
-            # augmentation reduction
-            reduce_factor = 0
-            if reduce_factor > 1:
-                output = output.unfold(0, reduce_factor, reduce_factor).mean(dim=2)
-                target = target[0:target.size(0):reduce_factor]
+        # augmentation reduction
+        reduce_factor = 0
+        if reduce_factor > 1:
+            output = output.unfold(0, reduce_factor, reduce_factor).mean(dim=2)
+            target = target[0:target.size(0):reduce_factor]
 
-            loss = loss_fn(output, target)
-            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        loss = loss_fn(output, target)
+        acc1, acc5 = accuracy(output, target, topk=(1, 5))
 
-            distributed = False
-            if 'WORLD_SIZE' in os.environ:
-                distributed = int(os.environ['WORLD_SIZE']) > 1
+        distributed = False
+        if 'WORLD_SIZE' in os.environ:
+            distributed = int(os.environ['WORLD_SIZE']) > 1
 
-            if distributed:
-                device = 'cuda:%d' % 0
-                torch.cuda.set_device(0)
-                torch.distributed.init_process_group(backend='nccl', init_method='env://')
-                world_size = torch.distributed.get_world_size()
+        if distributed:
+            device = 'cuda:%d' % 0
+            torch.cuda.set_device(0)
+            torch.distributed.init_process_group(backend='nccl', init_method='env://')
+            world_size = torch.distributed.get_world_size()
 
-            if distributed:
-                reduced_loss = reduce_tensor(loss.data, world_size)
-                acc1 = reduce_tensor(acc1, world_size)
-                acc5 = reduce_tensor(acc5, world_size)
-            else:
-                reduced_loss = loss.data
+        if distributed:
+            reduced_loss = reduce_tensor(loss.data, world_size)
+            acc1 = reduce_tensor(acc1, world_size)
+            acc5 = reduce_tensor(acc5, world_size)
+        else:
+            reduced_loss = loss.data
 
-            torch.cuda.synchronize()
+        torch.cuda.synchronize()
 
-            losses_m.update(reduced_loss.item(), input.size(0))
-            top1_m.update(acc1.item(), output.size(0))
-            top5_m.update(acc5.item(), output.size(0))
+        losses_m.update(reduced_loss.item(), input.size(0))
+        top1_m.update(acc1.item(), output.size(0))
+        top5_m.update(acc5.item(), output.size(0))
 
-            batch_time_m.update(time.time() - end)
-            end = time.time()
-            if last_batch or batch_idx % 100 == 0:
-                log_name = 'Test' + log_suffix
-                print(
-                    '{0}: [{1:>4d}/{2}]  '
-                    'Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  '
-                    'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
-                    'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
-                    'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
-                        log_name, batch_idx, last_idx, batch_time=batch_time_m,
-                        loss=losses_m, top1=top1_m, top5=top5_m))
+        batch_time_m.update(time.time() - end)
+        end = time.time()
+        if last_batch or batch_idx % 100 == 0:
+            log_name = 'Test' + log_suffix
+            print(
+                '{0}: [{1:>4d}/{2}]  '
+                'Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  '
+                'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
+                'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
+                'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
+                    log_name, batch_idx, last_idx, batch_time=batch_time_m,
+                    loss=losses_m, top1=top1_m, top5=top5_m))
 
     metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
 
@@ -185,11 +178,12 @@ def validate_attack(model, loader, loss_fn, amp_autocast=suppress, log_suffix=''
 
 
 if __name__ == '__main__':
-    loader = get_test_loader()
+    loader = get_val_loader()
     model = timm.create_model(tested_models[0],
                               checkpoint_path='output/train/20211005-100902-vit_tiny_patch16_224-224/checkpoint-100.pth.tar')
     model = model.cuda()
     validate_loss_fn = nn.CrossEntropyLoss().cuda()
-    # metrics = validate(model, loader, validate_loss_fn)
+    metrics = validate(model, loader, validate_loss_fn)
+    print("Clean metrics", metrics)
     metrics = validate_attack(model, loader, validate_loss_fn)
-    print(metrics)
+    print("Adversarial metrics", metrics)
