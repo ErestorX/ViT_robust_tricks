@@ -542,6 +542,7 @@ def vit_tiny_patch16_224(pretrained=False, **kwargs):
     """
     # original
     # model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, **kwargs)
+    print("plop")
     model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, drop_rate=.5, att_drop_rate=.5,  **kwargs)
     model = _create_vision_transformer('vit_tiny_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
