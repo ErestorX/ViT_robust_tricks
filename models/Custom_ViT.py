@@ -29,6 +29,7 @@ from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCE
 from timm.models.helpers import build_model_with_cfg, named_apply, adapt_input_conv
 from timm.models.layers import PatchEmbed, Mlp, DropPath, trunc_normal_, lecun_normal_
 from timm.models.registry import register_model
+from models import CustomDropout
 
 _logger = logging.getLogger(__name__)
 
@@ -178,7 +179,8 @@ class Attention(nn.Module):
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
+        # self.proj_drop = nn.Dropout(proj_drop)
+        self.proj_drop = CustomDropout(proj_drop)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -191,7 +193,7 @@ class Attention(nn.Module):
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        x = self.proj_drop(x)
+        x = self.proj_drop(x, attn)
         return x
 
 
@@ -542,8 +544,9 @@ def vit_tiny_patch16_224(pretrained=False, **kwargs):
     """
     # original
     # model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, **kwargs)
-    print("plop")
-    model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, drop_rate=.5, att_drop_rate=.5,  **kwargs)
+    kwargs['drop_rate'] = .5
+    kwargs['attn_drop_rate'] = 0.5
+    model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, **kwargs)
     model = _create_vision_transformer('vit_tiny_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
 
