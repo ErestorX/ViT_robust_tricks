@@ -2,6 +2,7 @@ from collections import OrderedDict
 from contextlib import suppress
 from timm.utils import *
 from torch import nn
+import numpy as np
 import torch
 import time
 import timm
@@ -176,6 +177,16 @@ def validate_attack(model, loader, loss_fn, amp_autocast=suppress, log_suffix=''
 
     return metrics
 
+def average_q_px_dist_per_head_per_block(attn):
+    for block in attn:
+        B, H, N, _ = attn.shape
+        attn = attn.permute(1, 0, 2, 3)
+        dist_map = np.zeros((H, B, N, N))
+        for i in range(N):
+            for j in range(N):
+                dist_map[:, :, i, j] = np.sqrt(((j - i) % np.sqrt(N)) ** 2 + ((j - i) // np.sqrt(N)) ** 2)
+        dist_map = torch.mean(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)), N
+
 
 if __name__ == '__main__':
     loader = get_val_loader()
@@ -184,6 +195,6 @@ if __name__ == '__main__':
     model = model.cuda()
     validate_loss_fn = nn.CrossEntropyLoss().cuda()
     metrics = validate(model, loader, validate_loss_fn)
-    print("Clean metrics", metrics)
+    print("Clean top1", metrics['top1'])
     metrics = validate_attack(model, loader, validate_loss_fn)
-    print("Adversarial metrics", metrics)
+    print("Adversarial top1", metrics['top1'])

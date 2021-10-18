@@ -17,8 +17,8 @@ def probability_from_long_distance_relation(attn):
     for i in range(N):
         for j in range(N):
             dist_map[:, :, i, j] = np.sqrt(((j-i)%np.sqrt(N))**2 + ((j-i)//np.sqrt(N))**2)
-    per_head_probability = distance2proba(torch.mean(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)), N)
-    return 0.5, per_head_probability
+    per_head_probability = distance2proba(torch.mean(attn * torch.as_tensor(dist_map, dtype=torch.float16).to(device='cuda'), (1, 2, 3)), N)
+    return per_head_probability
 
 
 class _DropoutNd(Module):
@@ -40,7 +40,7 @@ class _DropoutNd(Module):
 
 class CustomDropout(_DropoutNd):
     def forward(self, input: Tensor, attn: Tensor) -> Tensor:
-        p, per_head_p = probability_from_long_distance_relation(attn)
+        per_head_p = probability_from_long_distance_relation(attn)
         B, N, C = input.shape
         B, H, N, _ = attn.shape
         input = input.reshape(B, N, H, C // H).permute(2, 0, 1, 3)
