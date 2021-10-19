@@ -33,6 +33,8 @@ from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
 
+from models.Custom_ViT import vit_tiny_patch16_224
+
 try:
     from apex import amp
     from apex.parallel import DistributedDataParallel as ApexDDP
