@@ -286,6 +286,8 @@ parser.add_argument('--torchscript', dest='torchscript', action='store_true',
                     help='convert model torchscript for inference')
 parser.add_argument('--log-wandb', action='store_true', default=False,
                     help='log training and validation metrics to wandb')
+parser.add_argument('--timm_model', action='store_true', default=False,
+                    help='switch from using custom model to original timm model')
 
 
 def _parse_args():
@@ -353,35 +355,36 @@ def main():
 
     random_seed(args.seed, args.rank)
 
-    model = create_model(
-        args.model,
-        pretrained=args.pretrained,
-        num_classes=args.num_classes,
-        drop_rate=args.drop,
-        drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
-        drop_path_rate=args.drop_path,
-        drop_block_rate=args.drop_block,
-        global_pool=args.gp,
-        bn_tf=args.bn_tf,
-        bn_momentum=args.bn_momentum,
-        bn_eps=args.bn_eps,
-        scriptable=args.torchscript,
-        checkpoint_path=args.initial_checkpoint)
-
-    # kwargs = {'num_classes': args.num_classes, 'drop_rate': args.drop, 'drop_connect_rate': args.drop_connect,
-    #           'drop_path_rate': args.drop_path, 'drop_block_rate': args.drop_block, 'global_pool': args.gp,
-    #           'bn_tf': args.bn_tf, 'bn_momentum': args.bn_momentum, 'bn_eps': args.bn_eps}
-    # kwargs.pop('bn_tf', None)
-    # kwargs.pop('bn_momentum', None)
-    # kwargs.pop('bn_eps', None)
-    # drop_connect_rate = kwargs.pop('drop_connect_rate', None)
-    # if drop_connect_rate is not None and kwargs.get('drop_path_rate', None) is None:
-    #     kwargs['drop_path_rate'] = drop_connect_rate
-    # kwargs = {k: v for k, v in kwargs.items() if v is not None}
-    # with layers.set_layer_config(scriptable=args.torchscript, exportable=None, no_jit=None):
-    #     model = vit_tiny_patch16_224(pretrained=args.pretrained, **kwargs)
-    # if args.initial_checkpoint:
-    #     load_checkpoint(model, args.initial_checkpoint)
+    if args.timm_model:
+        model = create_model(
+            args.model,
+            pretrained=args.pretrained,
+            num_classes=args.num_classes,
+            drop_rate=args.drop,
+            drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
+            drop_path_rate=args.drop_path,
+            drop_block_rate=args.drop_block,
+            global_pool=args.gp,
+            bn_tf=args.bn_tf,
+            bn_momentum=args.bn_momentum,
+            bn_eps=args.bn_eps,
+            scriptable=args.torchscript,
+            checkpoint_path=args.initial_checkpoint)
+    else:
+        kwargs = {'num_classes': args.num_classes, 'drop_rate': args.drop, 'drop_connect_rate': args.drop_connect,
+                  'drop_path_rate': args.drop_path, 'drop_block_rate': args.drop_block, 'global_pool': args.gp,
+                  'bn_tf': args.bn_tf, 'bn_momentum': args.bn_momentum, 'bn_eps': args.bn_eps}
+        kwargs.pop('bn_tf', None)
+        kwargs.pop('bn_momentum', None)
+        kwargs.pop('bn_eps', None)
+        drop_connect_rate = kwargs.pop('drop_connect_rate', None)
+        if drop_connect_rate is not None and kwargs.get('drop_path_rate', None) is None:
+            kwargs['drop_path_rate'] = drop_connect_rate
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        with layers.set_layer_config(scriptable=args.torchscript, exportable=None, no_jit=None):
+            model = vit_tiny_patch16_224(pretrained=args.pretrained, **kwargs)
+        if args.initial_checkpoint:
+            load_checkpoint(model, args.initial_checkpoint)
 
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'

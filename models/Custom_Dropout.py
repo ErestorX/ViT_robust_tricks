@@ -2,22 +2,19 @@ import torch
 from torch.nn.modules import Module
 from torch.nn import functional as F
 from torch import Tensor
-import numpy as np
 
 
 def probability_from_long_distance_relation(attn):
     def distance2proba(per_head_avg_distance, N):
-        proba = per_head_avg_distance/np.sqrt(N)
+        proba = per_head_avg_distance/(N**0.5)
         proba = .5*torch.exp(5*proba)
         return proba.cpu().detach().numpy()
 
     B, H, N, _ = attn.shape
     attn = attn.permute(1, 0, 2, 3)
-    dist_map = np.zeros((H, B, N, N))
-    for i in range(N):
-        for j in range(N):
-            dist_map[:, :, i, j] = np.sqrt(((j-i)%np.sqrt(N))**2 + ((j-i)//np.sqrt(N))**2)
-    per_head_probability = distance2proba(torch.mean(attn * torch.as_tensor(dist_map, dtype=torch.float16).to(device='cuda'), (1, 2, 3)), N)
+    vect = torch.arange(N).reshape((1, N))
+    dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % N**0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N**0.5) ** 2)
+    per_head_probability = distance2proba(torch.mean(attn * dist_map.to(device='cuda'), (1, 2, 3)), N)
     return per_head_probability
 
 

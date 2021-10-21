@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import matplotlib.pyplot as plt
 from contextlib import suppress
 from timm.utils import *
 from torch import nn
@@ -177,24 +178,57 @@ def validate_attack(model, loader, loss_fn, amp_autocast=suppress, log_suffix=''
 
     return metrics
 
-def average_q_px_dist_per_head_per_block(attn):
-    for block in attn:
-        B, H, N, _ = attn.shape
-        attn = attn.permute(1, 0, 2, 3)
-        dist_map = np.zeros((H, B, N, N))
-        for i in range(N):
-            for j in range(N):
-                dist_map[:, :, i, j] = np.sqrt(((j - i) % np.sqrt(N)) ** 2 + ((j - i) // np.sqrt(N)) ** 2)
-        dist_map = torch.mean(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)), N
+def average_q_px_dist_per_head_per_block(loader, model):
+    def get_features(name):
+        def hook(model, input, output):
+            qkvs[name] = output.detach()
+        return hook
+
+    for block_id, block in enumerate(model.blocks):
+        block.attn.qkv.register_forward_hook(get_features(str(block_id)))
+
+    model.eval()
+    qkvs = {}
+    for batch_idx, (input, target) in enumerate(loader):
+        _ = model(input)
+        for block, qkv in qkvs.items():
+            num_heads, scale = model.blocks[0].attn.num_heads, model.blocks[0].attn.scale
+            patch_size = 16
+            B, N, CCC = qkv.shape
+            C = CCC//3
+            qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
+            q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+            attn = (q @ k.transpose(-2, -1)) * scale
+            attn = attn.softmax(dim=-1)
+            _, H, _, _ = attn.shape
+            attn = attn.permute(1, 0, 2, 3)
+            vect = torch.arange(N).reshape((1, N))
+            dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % N**0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N**0.5) ** 2)
+            per_head_dist_map = torch.mean(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) * patch_size
+            qkvs[block] = per_head_dist_map
+        break
+    vals = []
+    for qkv in qkvs.values():
+        vals.append(qkv.cpu().numpy())
+    vals = np.asarray(vals)
+    block_names = [str(i) for i in range(len(vals))]
+    fig, ax = plt.subplots()
+    for head in range(len(vals[0])):
+        ax.scatter(block_names, vals[:, head], label='head_'+str(head))
+    fig.suptitle('Average attention distance per head per block')
+    ax.legend()
+    ax.set_ylabel('Attention distance in Pixel')
+    ax.set_xlabel('Block id')
+    fig.show()
 
 
 if __name__ == '__main__':
     loader = get_val_loader()
-    model = timm.create_model(tested_models[0],
-                              checkpoint_path='output/train/20211005-100902-vit_tiny_patch16_224-224/checkpoint-100.pth.tar')
+    model = timm.create_model(tested_models[0], pretrained=True)
     model = model.cuda()
-    validate_loss_fn = nn.CrossEntropyLoss().cuda()
-    metrics = validate(model, loader, validate_loss_fn)
-    print("Clean top1", metrics['top1'])
-    metrics = validate_attack(model, loader, validate_loss_fn)
-    print("Adversarial top1", metrics['top1'])
+    average_q_px_dist_per_head_per_block(loader, model)
+    # validate_loss_fn = nn.CrossEntropyLoss().cuda()
+    # metrics = validate(model, loader, validate_loss_fn)
+    # print("Clean top1", metrics['top1'])
+    # metrics = validate_attack(model, loader, validate_loss_fn)
+    # print("Adversarial top1", metrics['top1'])
