@@ -21,7 +21,7 @@ def get_val_loader():
     loader_eval = timm.data.create_loader(
         dataset_eval,
         input_size=[3, 224, 224],
-        batch_size=128,
+        batch_size=1,
         is_training=False,
         use_prefetcher=True,
         interpolation='bicubic',
@@ -204,8 +204,8 @@ def average_q_px_dist_per_head_per_block(loader, model):
             attn = attn.permute(1, 0, 2, 3)
             vect = torch.arange(N).reshape((1, N))
             dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % N**0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N**0.5) ** 2)
-            per_head_dist_map = torch.mean(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) * patch_size
-            qkvs[block] = per_head_dist_map
+            per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3))/torch.sum(attn, (1, 2, 3))
+            qkvs[block] = per_head_dist_map * patch_size
         break
     vals = []
     for qkv in qkvs.values():

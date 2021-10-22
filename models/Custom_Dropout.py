@@ -14,8 +14,8 @@ def probability_from_long_distance_relation(attn):
     attn = attn.permute(1, 0, 2, 3)
     vect = torch.arange(N).reshape((1, N))
     dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % N**0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N**0.5) ** 2)
-    per_head_probability = distance2proba(torch.mean(attn * dist_map.to(device='cuda'), (1, 2, 3)), N)
-    return per_head_probability
+    per_head_dist = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
+    return distance2proba(per_head_dist, N)
 
 
 class _DropoutNd(Module):
