@@ -7,7 +7,7 @@ from torch import Tensor
 def probability_from_long_distance_relation(attn):
     def distance2proba(per_head_avg_distance, N):
         proba = per_head_avg_distance/(N**0.5)
-        proba = .5*torch.exp(5*proba)
+        proba = .5/torch.exp(5*proba)
         return proba.cpu().detach().numpy()
 
     B, H, N, _ = attn.shape
