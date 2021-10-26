@@ -425,9 +425,6 @@ def _create_vision_transformer(variant, pretrained=False, default_cfg=None, **kw
 def vit_tiny_patch16_224(pretrained=False, **kwargs):
     """ ViT-Tiny (Vit-Ti/16)
     """
-    # kwargs modifications
-    kwargs['drop_rate'] = .5
-    kwargs['attn_drop_rate'] = 0.5
     model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, **kwargs)
     model = _create_vision_transformer('vit_tiny_patch16_224', pretrained=pretrained, **model_kwargs)
     return model

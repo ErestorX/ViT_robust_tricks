@@ -21,7 +21,7 @@ def get_val_loader():
     loader_eval = timm.data.create_loader(
         dataset_eval,
         input_size=[3, 224, 224],
-        batch_size=1,
+        batch_size=128,
         is_training=False,
         use_prefetcher=True,
         interpolation='bicubic',
@@ -224,11 +224,12 @@ def average_q_px_dist_per_head_per_block(loader, model):
 
 if __name__ == '__main__':
     loader = get_val_loader()
-    model = timm.create_model(tested_models[0], pretrained=True)
+    model = timm.create_model(tested_models[0], checkpoint_path='output/train/vit_tiny_var_dropout_V1/model_best.pth.tar')
+    # model = timm.create_model(tested_models[0], pretrained=True)
     model = model.cuda()
     average_q_px_dist_per_head_per_block(loader, model)
-    # validate_loss_fn = nn.CrossEntropyLoss().cuda()
-    # metrics = validate(model, loader, validate_loss_fn)
-    # print("Clean top1", metrics['top1'])
-    # metrics = validate_attack(model, loader, validate_loss_fn)
-    # print("Adversarial top1", metrics['top1'])
+    validate_loss_fn = nn.CrossEntropyLoss().cuda()
+    metrics = validate(model, loader, validate_loss_fn)
+    print("Clean top1", metrics['top1'])
+    metrics = validate_attack(model, loader, validate_loss_fn)
+    print("Adversarial top1", metrics['top1'])
