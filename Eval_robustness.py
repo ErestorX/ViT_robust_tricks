@@ -9,7 +9,7 @@ import time
 import timm
 import os
 
-tested_models = ['vit_tiny_patch16_224']
+tested_models = ['vit_tiny_patch16_224', 'vit_base_patch16_224', 'vit_large_patch16_224']
 
 
 def get_val_loader():
@@ -21,7 +21,7 @@ def get_val_loader():
     loader_eval = timm.data.create_loader(
         dataset_eval,
         input_size=[3, 224, 224],
-        batch_size=128,
+        batch_size=32,
         is_training=False,
         use_prefetcher=True,
         interpolation='bicubic',
@@ -203,7 +203,7 @@ def average_q_px_dist_per_head_per_block(loader, model):
             _, H, _, _ = attn.shape
             attn = attn.permute(1, 0, 2, 3)
             vect = torch.arange(N).reshape((1, N))
-            dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % N**0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N**0.5) ** 2)
+            dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N-1)**0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // (N-1)**0.5) ** 2)
             per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3))/torch.sum(attn, (1, 2, 3))
             qkvs[block] = per_head_dist_map * patch_size
         break
@@ -216,20 +216,23 @@ def average_q_px_dist_per_head_per_block(loader, model):
     for head in range(len(vals[0])):
         ax.scatter(block_names, vals[:, head], label='head_'+str(head))
     fig.suptitle('Average attention distance per head per block')
-    ax.legend()
+    if len(vals[0]) > 5:
+        ax.legend()
     ax.set_ylabel('Attention distance in Pixel')
     ax.set_xlabel('Block id')
+    ax.grid(True, which='both')
+    ax.set_ylim(ymin=0)
     fig.show()
 
 
 if __name__ == '__main__':
     loader = get_val_loader()
-    model = timm.create_model(tested_models[0], checkpoint_path='output/train/vit_tiny_var_dropout_V1/model_best.pth.tar')
-    # model = timm.create_model(tested_models[0], pretrained=True)
+    # model = timm.create_model(tested_models[0], checkpoint_path='output/train/vit_tiny_original/model_best.pth.tar')
+    model = timm.create_model(tested_models[2], pretrained=True)
     model = model.cuda()
     average_q_px_dist_per_head_per_block(loader, model)
-    validate_loss_fn = nn.CrossEntropyLoss().cuda()
-    metrics = validate(model, loader, validate_loss_fn)
-    print("Clean top1", metrics['top1'])
-    metrics = validate_attack(model, loader, validate_loss_fn)
-    print("Adversarial top1", metrics['top1'])
+    # validate_loss_fn = nn.CrossEntropyLoss().cuda()
+    # metrics = validate(model, loader, validate_loss_fn)
+    # print("Clean top1", metrics['top1'])
+    # metrics = validate_attack(model, loader, validate_loss_fn)
+    # print("Adversarial top1", metrics['top1'])

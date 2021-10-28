@@ -371,16 +371,7 @@ def main():
             scriptable=args.torchscript,
             checkpoint_path=args.initial_checkpoint)
     else:
-        kwargs = {'num_classes': args.num_classes, 'drop_rate': args.drop, 'drop_connect_rate': args.drop_connect,
-                  'drop_path_rate': args.drop_path, 'drop_block_rate': args.drop_block, 'global_pool': args.gp,
-                  'bn_tf': args.bn_tf, 'bn_momentum': args.bn_momentum, 'bn_eps': args.bn_eps}
-        kwargs.pop('bn_tf', None)
-        kwargs.pop('bn_momentum', None)
-        kwargs.pop('bn_eps', None)
-        drop_connect_rate = kwargs.pop('drop_connect_rate', None)
-        if drop_connect_rate is not None and kwargs.get('drop_path_rate', None) is None:
-            kwargs['drop_path_rate'] = drop_connect_rate
-        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        kwargs = {'drop_rate': args.drop}
         with layers.set_layer_config(scriptable=args.torchscript, exportable=None, no_jit=None):
             model = vit_tiny_patch16_224(pretrained=args.pretrained, **kwargs)
         if args.initial_checkpoint:

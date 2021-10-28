@@ -64,7 +64,7 @@ class Attention(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         # self.proj_drop = nn.Dropout(proj_drop)
-        self.proj_drop = CustomDropout(proj_drop)
+        self.proj_drop = CustomDropout()
 
     def forward(self, x):
         B, N, C = x.shape
