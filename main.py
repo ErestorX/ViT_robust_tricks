@@ -127,9 +127,9 @@ parser.add_argument('--clip-mode', type=str, default='norm',
                     help='Gradient clipping mode. One of ("norm", "value", "agc")')
 
 # Learning rate schedule parameters
-parser.add_argument('--sched', default='step', type=str, metavar='SCHEDULER',
+parser.add_argument('--sched', default='cosine', type=str, metavar='SCHEDULER',
                     help='LR scheduler (default: "step"')
-parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
+parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
                     help='learning rate (default: 0.05)')
 parser.add_argument('--lr-noise', type=float, nargs='+', default=None, metavar='pct, pct',
                     help='learning rate noise on/off epoch percentages')
@@ -249,13 +249,13 @@ parser.add_argument('--model-ema-decay', type=float, default=0.9998,
 # Misc
 parser.add_argument('--seed', type=int, default=42, metavar='S',
                     help='random seed (default: 42)')
-parser.add_argument('--log-interval', type=int, default=150, metavar='N',
+parser.add_argument('--log-interval', type=int, default=104, metavar='N',
                     help='how many batches to wait before logging training status')
 parser.add_argument('--recovery-interval', type=int, default=0, metavar='N',
                     help='how many batches to wait before writing recovery checkpoint')
 parser.add_argument('--checkpoint-hist', type=int, default=10, metavar='N',
                     help='number of checkpoints to keep (default: 10)')
-parser.add_argument('-j', '--workers', type=int, default=4, metavar='N',
+parser.add_argument('-j', '--workers', type=int, default=6, metavar='N',
                     help='how many training processes to use (default: 4)')
 parser.add_argument('--save-images', action='store_true', default=False,
                     help='save images of input bathes every log interval for debugging')
@@ -714,7 +714,7 @@ def train_one_epoch(
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.avg:#.3g}  '
-                    'Time: {batch_time.val:.3f}s'
+                    'Time: {batch_time.val:.3f}s  '
                     'LR: {lr:.3e}'.format(epoch, batch_idx, len(loader), 100. * batch_idx / last_idx, loss=losses_m,
                                           batch_time=batch_time_m, lr=lr))
 
