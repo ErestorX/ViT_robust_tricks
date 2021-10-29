@@ -127,7 +127,7 @@ parser.add_argument('--clip-mode', type=str, default='norm',
                     help='Gradient clipping mode. One of ("norm", "value", "agc")')
 
 # Learning rate schedule parameters
-parser.add_argument('--sched', default='cosine', type=str, metavar='SCHEDULER',
+parser.add_argument('--sched', default='step', type=str, metavar='SCHEDULER',
                     help='LR scheduler (default: "step"')
 parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
                     help='learning rate (default: 0.05)')
@@ -157,7 +157,7 @@ parser.add_argument('--start-epoch', default=None, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('--decay-epochs', type=float, default=100, metavar='N',
                     help='epoch interval to decay LR')
-parser.add_argument('--warmup-epochs', type=int, default=2, metavar='N',
+parser.add_argument('--warmup-epochs', type=int, default=22, metavar='N',
                     help='epochs to warmup LR, if scheduler supports')
 parser.add_argument('--cooldown-epochs', type=int, default=0, metavar='N',
                     help='epochs to cooldown LR at min_lr, after cyclic schedule ends')
