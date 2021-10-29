@@ -157,7 +157,7 @@ parser.add_argument('--start-epoch', default=None, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('--decay-epochs', type=float, default=100, metavar='N',
                     help='epoch interval to decay LR')
-parser.add_argument('--warmup-epochs', type=int, default=22, metavar='N',
+parser.add_argument('--warmup-epochs', type=int, default=5, metavar='N',
                     help='epochs to warmup LR, if scheduler supports')
 parser.add_argument('--cooldown-epochs', type=int, default=0, metavar='N',
                     help='epochs to cooldown LR at min_lr, after cyclic schedule ends')
@@ -590,11 +590,7 @@ def main():
         if args.experiment:
             exp_name = args.experiment
         else:
-            exp_name = '-'.join([
-                datetime.now().strftime("%Y%m%d-%H%M%S"),
-                safe_model_name(args.model),
-                str(data_config['input_size'][-1])
-            ])
+            exp_name = '-'.join([datetime.now().strftime("%m%d-%H:%M"), safe_model_name(args.model)])
         output_dir = get_outdir(args.output if args.output else './output/train', exp_name)
         decreasing = True if eval_metric == 'loss' else False
         saver = CheckpointSaver(
@@ -717,20 +713,10 @@ def train_one_epoch(
             if args.local_rank == 0:
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
-                    'Loss: {loss.val:#.4g} ({loss.avg:#.3g})  '
-                    'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  '
-                    '({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  '
-                    'LR: {lr:.3e}  '
-                    'Data: {data_time.val:.3f} ({data_time.avg:.3f})'.format(
-                        epoch,
-                        batch_idx, len(loader),
-                        100. * batch_idx / last_idx,
-                        loss=losses_m,
-                        batch_time=batch_time_m,
-                        rate=input.size(0) * args.world_size / batch_time_m.val,
-                        rate_avg=input.size(0) * args.world_size / batch_time_m.avg,
-                        lr=lr,
-                        data_time=data_time_m))
+                    'Loss: {loss.avg:#.3g}  '
+                    'Time: {batch_time.val:.3f}s'
+                    'LR: {lr:.3e}'.format(epoch, batch_idx, len(loader), 100. * batch_idx / last_idx, loss=losses_m,
+                                          batch_time=batch_time_m, lr=lr))
 
                 if args.save_images and output_dir:
                     torchvision.utils.save_image(
@@ -807,12 +793,11 @@ def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='')
                 log_name = 'Test' + log_suffix
                 _logger.info(
                     '{0}: [{1:>4d}/{2}]  '
-                    'Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  '
-                    'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
-                    'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
-                    'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
-                        log_name, batch_idx, last_idx, batch_time=batch_time_m,
-                        loss=losses_m, top1=top1_m, top5=top5_m))
+                    'Time: {batch_time.avg:.3f}  '
+                    'Loss: {loss.avg:>6.4f}  '
+                    'Acc@1: {top1.avg:>7.4f}  '
+                    'Acc@5: {top5.avg:>7.4f}'.format(log_name, batch_idx, last_idx, batch_time=batch_time_m,
+                                                     loss=losses_m, top1=top1_m, top5=top5_m))
 
     metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
 
