@@ -179,7 +179,7 @@ parser.add_argument('--vflip', type=float, default=0.,
                     help='Vertical flip training aug probability')
 parser.add_argument('--color-jitter', type=float, default=0.4, metavar='PCT',
                     help='Color jitter factor (default: 0.4)')
-parser.add_argument('--aa', type=str, default='rand-m0-l2', metavar='NAME',
+parser.add_argument('--aa', type=str, default='rand-m0-n2', metavar='NAME',
                     help='Use AutoAugment policy. "v0" or "original". (default: None)'),
 parser.add_argument('--aug-repeats', type=int, default=0,
                     help='Number of augmentation repetitions (distributed training only) (default: 0)')
