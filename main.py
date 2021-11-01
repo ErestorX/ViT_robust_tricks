@@ -119,7 +119,7 @@ parser.add_argument('--opt-betas', default=(0.9, 0.999), type=float, nargs='+', 
                     help='Optimizer Betas (default: None, use opt default)')
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                     help='Optimizer momentum (default: 0.9)')
-parser.add_argument('--weight-decay', type=float, default=0.03,
+parser.add_argument('--weight-decay', type=float, default=2e-5,
                     help='weight decay (default: 2e-5)')
 parser.add_argument('--clip-grad', type=float, default=1.0, metavar='NORM',
                     help='Clip gradient norm (default: None, no clipping)')
@@ -129,7 +129,7 @@ parser.add_argument('--clip-mode', type=str, default='norm',
 # Learning rate schedule parameters
 parser.add_argument('--sched', default='cosine', type=str, metavar='SCHEDULER',
                     help='LR scheduler (default: "step"')
-parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
+parser.add_argument('--lr', type=float, default=0.003, metavar='LR',
                     help='learning rate (default: 0.05)')
 parser.add_argument('--lr-noise', type=float, nargs='+', default=None, metavar='pct, pct',
                     help='learning rate noise on/off epoch percentages')
@@ -157,7 +157,7 @@ parser.add_argument('--start-epoch', default=None, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('--decay-epochs', type=float, default=100, metavar='N',
                     help='epoch interval to decay LR')
-parser.add_argument('--warmup-epochs', type=int, default=5, metavar='N',
+parser.add_argument('--warmup-epochs', type=int, default=50, metavar='N',
                     help='epochs to warmup LR, if scheduler supports')
 parser.add_argument('--cooldown-epochs', type=int, default=0, metavar='N',
                     help='epochs to cooldown LR at min_lr, after cyclic schedule ends')
@@ -590,7 +590,7 @@ def main():
         if args.experiment:
             exp_name = args.experiment
         else:
-            exp_name = '-'.join([datetime.now().strftime("%m%d-%H:%M"), safe_model_name(args.model)])
+            exp_name = '-'.join([datetime.now().strftime("%m-%d_%H:%M"), safe_model_name(args.model)])
         output_dir = get_outdir(args.output if args.output else './output/train', exp_name)
         decreasing = True if eval_metric == 'loss' else False
         saver = CheckpointSaver(
