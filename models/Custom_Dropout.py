@@ -6,10 +6,10 @@ from torch import Tensor
 
 def probability_from_long_distance_relation(attn, mode='square', bin_do_val=0.15):
     def distance2proba(per_head_avg_distance, N):
-        if mode is 'exp':
+        if mode == 'exp':
             proba = per_head_avg_distance/(N ** 0.5)
             proba = .5/torch.exp(5*proba)
-        elif mode is 'square':
+        elif mode == 'square':
             threshold = 4  # penalise when looking up to 3 patch of distance
             proba = per_head_avg_distance / (N ** 0.5)
             proba[proba <= threshold] = 0
