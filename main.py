@@ -681,7 +681,8 @@ def train_one_epoch(
         with amp_autocast():
             output = model(input)
             loss = loss_fn(output, target)
-            acc1 = accuracy(output, target, topk=(1,))
+
+        acc1, acc5 = accuracy(output, target, topk=(1, 5))
 
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))
