@@ -22,6 +22,7 @@ from datetime import datetime
 import torch
 import torch.nn as nn
 import torchvision.utils
+from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
 from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
@@ -599,6 +600,8 @@ def main():
         with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
             f.write(args_text)
 
+    writer = SummaryWriter(log_dir=output_dir)
+
     try:
         for epoch in range(start_epoch, num_epochs):
             if args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
@@ -607,21 +610,21 @@ def main():
             train_metrics = train_one_epoch(
                 epoch, model, loader_train, optimizer, train_loss_fn, args,
                 lr_scheduler=lr_scheduler, saver=saver, output_dir=output_dir,
-                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn)
+                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn, writer=writer)
 
             if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
                 if args.local_rank == 0:
                     _logger.info("Distributing BatchNorm running means and vars")
                 distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
 
-            eval_metrics = validate(model, loader_eval, validate_loss_fn, args, amp_autocast=amp_autocast)
+            eval_metrics = validate(epoch, model, loader_eval, validate_loss_fn, args, amp_autocast=amp_autocast, writer=writer)
 
             if model_ema is not None and not args.model_ema_force_cpu:
                 if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
                     distribute_bn(model_ema, args.world_size, args.dist_bn == 'reduce')
-                ema_eval_metrics = validate(
+                ema_eval_metrics = validate(epoch,
                     model_ema.module, loader_eval, validate_loss_fn, args, amp_autocast=amp_autocast,
-                    log_suffix=' (EMA)')
+                    log_suffix=' (EMA)', writer=writer)
                 eval_metrics = ema_eval_metrics
 
             if lr_scheduler is not None:
@@ -647,7 +650,7 @@ def main():
 def train_one_epoch(
         epoch, model, loader, optimizer, loss_fn, args,
         lr_scheduler=None, saver=None, output_dir=None, amp_autocast=suppress,
-        loss_scaler=None, model_ema=None, mixup_fn=None):
+        loss_scaler=None, model_ema=None, mixup_fn=None, writer=None):
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
         if args.prefetcher and loader.mixup_enabled:
             loader.mixup_enabled = False
@@ -658,6 +661,7 @@ def train_one_epoch(
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     losses_m = AverageMeter()
+    top1_m = AverageMeter()
 
     model.train()
 
@@ -677,6 +681,7 @@ def train_one_epoch(
         with amp_autocast():
             output = model(input)
             loss = loss_fn(output, target)
+            acc1 = accuracy(output, target, topk=(1,))
 
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))
@@ -708,15 +713,17 @@ def train_one_epoch(
 
             if args.distributed:
                 reduced_loss = reduce_tensor(loss.data, args.world_size)
+                acc1 = reduce_tensor(acc1, args.world_size)
                 losses_m.update(reduced_loss.item(), input.size(0))
+                top1_m.update(acc1.item(), output.size(0))
 
             if args.local_rank == 0:
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.avg:#.3g}  '
-                    'Time: {batch_time.val:.3f}s  '
+                    'Acc@1: {top1.avg:>7.4f}  '
                     'LR: {lr:.3e}'.format(epoch, batch_idx, len(loader), 100. * batch_idx / last_idx, loss=losses_m,
-                                          batch_time=batch_time_m, lr=lr))
+                                          top1=top1_m, lr=lr))
 
                 if args.save_images and output_dir:
                     torchvision.utils.save_image(
@@ -732,6 +739,10 @@ def train_one_epoch(
         if lr_scheduler is not None:
             lr_scheduler.step_update(num_updates=num_updates, metric=losses_m.avg)
 
+        if writer is not None:
+            writer.add_scalar('Loss/train', losses_m.avg, epoch)
+            writer.add_scalar('Accuracy/train', top1_m.avg, epoch)
+
         end = time.time()
         # end for
 
@@ -741,7 +752,7 @@ def train_one_epoch(
     return OrderedDict([('loss', losses_m.avg)])
 
 
-def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix=''):
+def validate(epoch, model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='', writer=None):
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
@@ -793,13 +804,14 @@ def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='')
                 log_name = 'Test' + log_suffix
                 _logger.info(
                     '{0}: [{1:>4d}/{2}]  '
-                    'Time: {batch_time.avg:.3f}  '
                     'Loss: {loss.avg:>6.4f}  '
-                    'Acc@1: {top1.avg:>7.4f}  '
-                    'Acc@5: {top5.avg:>7.4f}'.format(log_name, batch_idx, last_idx, batch_time=batch_time_m,
-                                                     loss=losses_m, top1=top1_m, top5=top5_m))
+                    'Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx, loss=losses_m, top1=top1_m))
 
     metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+
+    if writer is not None:
+        writer.add_scalar('Loss/test', losses_m.avg, epoch)
+        writer.add_scalar('Accuracy/test', top1_m.avg, epoch)
 
     return metrics
 

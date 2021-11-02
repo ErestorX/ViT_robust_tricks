@@ -4,17 +4,26 @@ from torch.nn import functional as F
 from torch import Tensor
 
 
-def probability_from_long_distance_relation(attn):
+def probability_from_long_distance_relation(attn, mode='square', bin_do_val=0.15):
     def distance2proba(per_head_avg_distance, N):
-        proba = per_head_avg_distance/(N**0.5)
-        proba = .5/torch.exp(5*proba)
+        if mode is 'exp':
+            proba = per_head_avg_distance/(N ** 0.5)
+            proba = .5/torch.exp(5*proba)
+        elif mode is 'square':
+            threshold = 4  # penalise when looking up to 3 patch of distance
+            proba = per_head_avg_distance / (N ** 0.5)
+            proba[proba <= threshold] = 0
+            proba[proba > threshold] = bin_do_val
+        else:
+            proba = per_head_avg_distance * 0.0
         return proba.cpu().detach().numpy()
+
 
     B, H, N, _ = attn.shape
     attn = attn.permute(1, 0, 2, 3)
-    vect = torch.arange(N).reshape((1, N))
-    dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % N**0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N**0.5) ** 2)
-    per_head_dist = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
+    line_dist_map = torch.arange(N).reshape((1, N)) - torch.arange(N).reshape((N, 1))
+    dist_map = torch.sqrt((line_dist_map % N**0.5) ** 2 + (line_dist_map // N**0.5) ** 2)
+    per_head_dist = torch.sum(attn * dist_map.to(device='cuda'), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
     return distance2proba(per_head_dist, N)
 
 
