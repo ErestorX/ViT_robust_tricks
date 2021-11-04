@@ -4,7 +4,7 @@ from torch.nn import functional as F
 from torch import Tensor
 
 
-def probability_from_long_distance_relation(attn, mode='square', bin_do_val=0.15):
+def probability_from_long_distance_relation(attn, mode='exp', bin_do_val=0.15):
     def distance2proba(per_head_avg_distance, N):
         if mode == 'exp':
             proba = per_head_avg_distance/(N ** 0.5)
