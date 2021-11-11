@@ -66,7 +66,7 @@ default_cfgs = {
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., threshold=4, do_mode='exp'):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -75,8 +75,7 @@ class Attention(nn.Module):
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
-        # self.proj_drop = nn.Dropout(proj_drop)
-        self.proj_drop = CustomDropout()
+        self.proj_drop = CustomDropout(mode=do_mode, threshold=threshold)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -96,10 +95,10 @@ class Attention(nn.Module):
 class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, do_mode='exp', threshold=4):
         super().__init__()
         self.norm1 = norm_layer(dim)
-        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
+        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, threshold=threshold, do_mode=do_mode)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -150,6 +149,8 @@ class VisionTransformer(nn.Module):
         self.num_tokens = 2 if distilled else 1
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         act_layer = act_layer or nn.GELU
+        self.do_mode = 'exp'
+        threshold = 4 if patch_size == 16 else 2
 
         self.patch_embed = embed_layer(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
@@ -164,7 +165,7 @@ class VisionTransformer(nn.Module):
         self.blocks = nn.Sequential(*[
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer)
+                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer, do_mode=self.do_mode, threshold=threshold)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
 
