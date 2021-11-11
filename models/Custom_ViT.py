@@ -19,16 +19,16 @@ import math
 import logging
 from functools import partial
 from collections import OrderedDict
-from copy import deepcopy
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
+from timm.data import IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 from timm.models.helpers import build_model_with_cfg, named_apply, adapt_input_conv
 from timm.models.layers import PatchEmbed, Mlp, DropPath, trunc_normal_, lecun_normal_
 from timm.models.registry import register_model
+
 from models import CustomDropout
 
 _logger = logging.getLogger(__name__)
@@ -47,9 +47,21 @@ def _cfg(url='', **kwargs):
 
 default_cfgs = {
     # patch models (weights from official Google JAX impl)
-    'vit_tiny_patch16_224': _cfg(
+    'custom_vit_tiny_patch16_224': _cfg(
         url='https://storage.googleapis.com/vit_models/augreg/'
             'Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_224.npz'),
+    'custom_vit_small_patch16_224': _cfg(
+        url='https://storage.googleapis.com/vit_models/augreg/'
+            'S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_224.npz'),
+    'custom_vit_small_patch32_224': _cfg(
+        url='https://storage.googleapis.com/vit_models/augreg/'
+            'S_32-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_224.npz'),
+    'custom_vit_base_patch16_224': _cfg(
+        url='https://storage.googleapis.com/vit_models/augreg/'
+            'B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_224.npz'),
+    'custom_vit_base_patch32_224': _cfg(
+        url='https://storage.googleapis.com/vit_models/augreg/'
+            'B_32-i21k-300ep-lr_0.001-aug_medium1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_224.npz'),
 }
 
 
@@ -422,9 +434,49 @@ def _create_vision_transformer(variant, pretrained=False, default_cfg=None, **kw
     return model
 
 
-def vit_tiny_patch16_224(pretrained=False, **kwargs):
+@register_model
+def custom_vit_tiny_patch16_224(pretrained=False, **kwargs):
     """ ViT-Tiny (Vit-Ti/16)
     """
     model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, **kwargs)
-    model = _create_vision_transformer('vit_tiny_patch16_224', pretrained=pretrained, **model_kwargs)
+    model = _create_vision_transformer('custom_vit_tiny_patch16_224', pretrained=pretrained, **model_kwargs)
+    return model
+
+
+@register_model
+def custom_vit_small_patch16_224(pretrained=False, **kwargs):
+    """ ViT-Small (ViT-S/16)
+    NOTE I've replaced my previous 'small' model definition and weights with the small variant from the DeiT paper
+    """
+    model_kwargs = dict(patch_size=16, embed_dim=384, depth=12, num_heads=6, **kwargs)
+    model = _create_vision_transformer('custom_vit_small_patch16_224', pretrained=pretrained, **model_kwargs)
+    return model
+
+
+@register_model
+def custom_vit_small_patch32_224(pretrained=False, **kwargs):
+    """ ViT-Small (ViT-S/32)
+    """
+    model_kwargs = dict(patch_size=32, embed_dim=384, depth=12, num_heads=6, **kwargs)
+    model = _create_vision_transformer('custom_vit_small_patch32_224', pretrained=pretrained, **model_kwargs)
+    return model
+
+
+@register_model
+def custom_vit_base_patch16_224(pretrained=False, **kwargs):
+    """ ViT-Base (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).
+    ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
+    """
+    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model = _create_vision_transformer('custom_vit_base_patch16_224', pretrained=pretrained, **model_kwargs)
+    return model
+
+
+@register_model
+def custom_vit_base_patch32_224(pretrained=False, **kwargs):
+    """ ViT-Base (ViT-B/32) from original paper (https://arxiv.org/abs/2010.11929).
+    ImageNet-1k weights fine-tuned from in21k, source https://github.com/google-research/vision_transformer.
+    """
+    model_kwargs = dict(patch_size=32, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model = _create_vision_transformer('custom_vit_base_patch32_224', pretrained=pretrained, **model_kwargs)
     return model

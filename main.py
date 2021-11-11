@@ -25,6 +25,8 @@ import torchvision.utils
 from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
+import models
+
 from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 from timm.models import create_model, safe_model_name, resume_checkpoint, load_checkpoint, \
     convert_splitbn_model, model_parameters, layers
@@ -33,8 +35,6 @@ from timm.loss import *
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
-
-from models.Custom_ViT import vit_tiny_patch16_224
 
 try:
     from apex import amp
@@ -302,6 +302,8 @@ def _parse_args():
     # The main arg parser parses the rest of the args, the usual
     # defaults will have been overridden if config file specified.
     args = parser.parse_args(remaining)
+    if not args.timm_model:
+        args.model = 'custom_' + args.model
 
     # Cache the args as a text string to save them in the output dir later
     args_text = yaml.safe_dump(args.__dict__, default_flow_style=False)
@@ -356,27 +358,20 @@ def main():
 
     random_seed(args.seed, args.rank)
 
-    if args.timm_model:
-        model = create_model(
-            args.model,
-            pretrained=args.pretrained,
-            num_classes=args.num_classes,
-            drop_rate=args.drop,
-            drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
-            drop_path_rate=args.drop_path,
-            drop_block_rate=args.drop_block,
-            global_pool=args.gp,
-            bn_tf=args.bn_tf,
-            bn_momentum=args.bn_momentum,
-            bn_eps=args.bn_eps,
-            scriptable=args.torchscript,
-            checkpoint_path=args.initial_checkpoint)
-    else:
-        kwargs = {'drop_rate': args.drop}
-        with layers.set_layer_config(scriptable=args.torchscript, exportable=None, no_jit=None):
-            model = vit_tiny_patch16_224(pretrained=args.pretrained, **kwargs)
-        if args.initial_checkpoint:
-            load_checkpoint(model, args.initial_checkpoint)
+    model = create_model(
+        args.model,
+        pretrained=args.pretrained,
+        num_classes=args.num_classes,
+        drop_rate=args.drop,
+        drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
+        drop_path_rate=args.drop_path,
+        drop_block_rate=args.drop_block,
+        global_pool=args.gp,
+        bn_tf=args.bn_tf,
+        bn_momentum=args.bn_momentum,
+        bn_eps=args.bn_eps,
+        scriptable=args.torchscript,
+        checkpoint_path=args.initial_checkpoint)
 
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
