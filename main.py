@@ -683,6 +683,8 @@ def train_one_epoch(
             output = model(input)
             loss = loss_fn(output, target)
 
+        if args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None:
+            target = torch.argmax(target, dim=1)
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
 
         if not args.distributed:
@@ -785,6 +787,8 @@ def validate(epoch, model, loader, loss_fn, args, amp_autocast=suppress, log_suf
                 target = target[0:target.size(0):reduce_factor]
 
             loss = loss_fn(output, target)
+            if args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None:
+                target = torch.argmax(target, dim=1)
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
 
             if args.distributed:
