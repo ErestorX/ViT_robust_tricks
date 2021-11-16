@@ -377,7 +377,6 @@ def main():
         scriptable=args.torchscript,
         checkpoint_path=args.initial_checkpoint)
     if not args.timm_model:
-        print(args.do_mode)
         model.do_mode = args.do_mode
 
     if args.num_classes is None:

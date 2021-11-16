@@ -1,17 +1,14 @@
-from matplotlib.ticker import PercentFormatter
+from utils_eval import average_q_px_dist_per_head_per_block, freq_hist, get_CKA
 from torchvision.utils import save_image
 from collections import OrderedDict
-import matplotlib.pyplot as plt
 from contextlib import suppress
 from timm.utils import *
 from torch import nn
-import numpy as np
 import argparse
 import models
 import torch
 import time
 import timm
-import cv2
 import csv
 import os
 
@@ -185,72 +182,6 @@ def validate_attack(model, loader, loss_fn, val_path):
     return metrics
 
 
-def average_q_px_dist_per_head_per_block(title, fname, loader, model):
-    def get_features(name):
-        def hook(model, input, output):
-            qkvs[name] = output.detach()
-        return hook
-
-    for block_id, block in enumerate(model.blocks):
-        block.attn.qkv.register_forward_hook(get_features(str(block_id)))
-
-    patch_size = 16 if '16' in title.split('_')[2] else 32
-    model.eval()
-    qkvs = {}
-    for batch_idx, (input, target) in enumerate(loader):
-        _ = model(input)
-        for block, qkv in qkvs.items():
-            num_heads, scale = model.blocks[0].attn.num_heads, model.blocks[0].attn.scale
-            B, N, CCC = qkv.shape
-            C = CCC//3
-            qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
-            q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-            attn = (q @ k.transpose(-2, -1)) * scale
-            attn = attn.softmax(dim=-1)
-            _, H, _, _ = attn.shape
-            attn = attn.permute(1, 0, 2, 3)
-            vect = torch.arange(N).reshape((1, N))
-            dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N-1)**0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // (N-1)**0.5) ** 2)
-            per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3))/torch.sum(attn, (1, 2, 3))
-            qkvs[block] = per_head_dist_map * patch_size
-        break
-    vals = []
-    for qkv in qkvs.values():
-        vals.append(qkv.cpu().numpy())
-    vals = np.asarray(vals)
-    block_names = [str(i) for i in range(len(vals))]
-    fig, ax = plt.subplots()
-    for head in range(len(vals[0])):
-        ax.scatter(block_names, vals[:, head], label='head_'+str(head))
-    fig.suptitle(title)
-    if len(vals[0]) < 7:
-        ax.legend()
-    ax.set_ylabel('Attention distance in Pixel')
-    ax.set_xlabel('Block id')
-    ax.grid(True, which='both')
-    ax.set_ylim(ymax=180, ymin=0)
-    plt.savefig(fname + '/Attn_dist.png')
-    plt.close()
-
-
-def freq_hist(title, val_path):
-    for img in ['clean', 'adv', 'perturb']:
-        image = cv2.imread(val_path + '/' + img + '_batch.png')
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        data = image.ravel()
-
-        _ = plt.hist(data, weights=np.ones(len(data)) / len(data), bins=256, color='orange', )
-        _ = plt.title(title)
-        _ = plt.xlabel('Intensity Value')
-        _ = plt.ylabel('Count')
-        _ = plt.ylim(top=.2 if img == 'perturb' else .01)
-        _ = plt.legend(['Total'])
-        plt.gca().yaxis.set_major_formatter(PercentFormatter(1))
-        plt.savefig(val_path + '/Pixel_hist_' + img + '.png')
-        plt.close()
-        plt.imsave(val_path + '/Freq_' + img + '.png', np.log(abs(np.fft.fftshift(np.fft.fft2(image)))), cmap='gray')
-
-
 def main():
     args = parser.parse_args()
     custom_model = args.ckpt != ''
@@ -259,18 +190,21 @@ def main():
     ext = '/model_best.pth.tar'
     tested_models = ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224', 'vit_base_patch16_224',
                      'vit_base_patch32_224']
+    custom_versions = ['do_exp5', 'dosq4015']
     if args.version < 0 or args.version >= len(tested_models):
         print("Error: Version asked does not exist.")
         return
     if args.ckpt == '':
         ckpt_path = train_path + tested_models[args.version]
         val_path = val_path + tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
+        exp_name = tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
     else:
         ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
         val_path = val_path + tested_models[args.version] + '_' + args.ckpt
+        exp_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt
     if os.path.exists(ckpt_path) or args.p:
-        if not os.path.exists(val_path):
-            os.mkdir(val_path)
+        if True:
+            # os.mkdir(val_path)
             ckpt_file = ckpt_path + ext
             if args.p and not custom_model:
                 model = timm.create_model(tested_models[args.version], pretrained=True)
@@ -280,16 +214,25 @@ def main():
             model = model.cuda()
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
-            average_q_px_dist_per_head_per_block(val_path.split('/')[-1], val_path, loader, model)
-            clean_metrics = validate(model, loader, validate_loss_fn, val_path)
-            adv_metrics = validate_attack(model, loader, validate_loss_fn, val_path)
+            # average_q_px_dist_per_head_per_block(val_path.split('/')[-1], val_path, loader, model)
+            # clean_metrics = validate(model, loader, validate_loss_fn, val_path)
+            # adv_metrics = validate_attack(model, loader, validate_loss_fn, val_path)
             # freq_hist(val_path.split('/')[-1], val_path)
+            for model_name in tested_models:
+                for version in custom_versions:
+                    ckpt_file = train_path + model_name + '_' + version + ext
+                    if os.path.exists(ckpt_file):
+                        get_CKA(val_path, model, exp_name, timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(), model_name+version, loader)
+                ckpt_file = train_path + model_name + '_scratch' + ext
+                if os.path.exists(ckpt_file):
+                    get_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(), model_name+'_scratch', loader)
+                get_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(), model_name+'_pretrained', loader)
 
-            with open(val_path + '/Validation.csv', 'w+', newline='') as csvfile:
-                writer = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-                writer.writerow(['Data', 'Loss', 'Acc@1', 'Acc@5'])
-                writer.writerow(['Clean', clean_metrics['loss'], clean_metrics['top1'], clean_metrics['top5']])
-                writer.writerow(['Adv', adv_metrics['loss'], adv_metrics['top1'], adv_metrics['top5']])
+            # with open(val_path + '/Validation.csv', 'w+', newline='') as csvfile:
+            #     writer = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            #     writer.writerow(['Data', 'Loss', 'Acc@1', 'Acc@5'])
+            #     writer.writerow(['Clean', clean_metrics['loss'], clean_metrics['top1'], clean_metrics['top5']])
+            #     writer.writerow(['Adv', adv_metrics['loss'], adv_metrics['top1'], adv_metrics['top5']])
         else:
             print("Error: Results already existing:", val_path.split('/')[-1])
     else:
