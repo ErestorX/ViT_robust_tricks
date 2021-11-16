@@ -306,6 +306,13 @@ def _parse_args():
     # The main arg parser parses the rest of the args, the usual
     # defaults will have been overridden if config file specified.
     args = parser.parse_args(remaining)
+    if args.model.split("_")[1] == 'base':
+        print("Loading training args for vit_base models")
+        args.mixup = 0.5
+        args.aa = 'rand-m15-n2'
+        args.drop = 0.1
+        args.drop_path = 0.1
+        args.dr = 0.03
     if not args.timm_model:
         args.model = 'custom_' + args.model
 
@@ -787,8 +794,6 @@ def validate(epoch, model, loader, loss_fn, args, amp_autocast=suppress, log_suf
                 target = target[0:target.size(0):reduce_factor]
 
             loss = loss_fn(output, target)
-            if args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None:
-                target = torch.argmax(target, dim=1)
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
 
             if args.distributed:
