@@ -190,7 +190,7 @@ def main():
     ext = '/model_best.pth.tar'
     tested_models = ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224', 'vit_base_patch16_224',
                      'vit_base_patch32_224']
-    custom_versions = ['do_exp5', 'dosq4015']
+    custom_versions = ['doexp5', 'dosq4015']
     if args.version < 0 or args.version >= len(tested_models):
         print("Error: Version asked does not exist.")
         return
@@ -203,8 +203,8 @@ def main():
         val_path = val_path + tested_models[args.version] + '_' + args.ckpt
         exp_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt
     if os.path.exists(ckpt_path) or args.p:
-        if True:
-            # os.mkdir(val_path)
+        if not os.path.exists(val_path):
+            os.mkdir(val_path)
             ckpt_file = ckpt_path + ext
             if args.p and not custom_model:
                 model = timm.create_model(tested_models[args.version], pretrained=True)
@@ -214,27 +214,36 @@ def main():
             model = model.cuda()
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
-            # average_q_px_dist_per_head_per_block(val_path.split('/')[-1], val_path, loader, model)
-            # clean_metrics = validate(model, loader, validate_loss_fn, val_path)
-            # adv_metrics = validate_attack(model, loader, validate_loss_fn, val_path)
-            # freq_hist(val_path.split('/')[-1], val_path)
+            average_q_px_dist_per_head_per_block(val_path.split('/')[-1], val_path, loader, model)
+            clean_metrics = validate(model, loader, validate_loss_fn, val_path)
+            adv_metrics = validate_attack(model, loader, validate_loss_fn, val_path)
+            freq_hist(val_path.split('/')[-1], val_path)
+
+            with open(val_path + '/Validation.csv', 'w+', newline='') as csvfile:
+                writer = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+                writer.writerow(['Data', 'Loss', 'Acc@1', 'Acc@5'])
+                writer.writerow(['Clean', clean_metrics['loss'], clean_metrics['top1'], clean_metrics['top5']])
+                writer.writerow(['Adv', adv_metrics['loss'], adv_metrics['top1'], adv_metrics['top5']])
+        else:
+            print("Error: Results already existing:", val_path.split('/')[-1], "\n\tUpdating CKA visualization regardless.")
+            ckpt_file = ckpt_path + ext
+            if args.p and not custom_model:
+                model = timm.create_model(tested_models[args.version], pretrained=True)
+            else:
+                model = timm.create_model(
+                    'custom_' + tested_models[args.version] if custom_model else tested_models[args.version],
+                    checkpoint_path=ckpt_file)
+            loader = get_val_loader()
+            model = model.cuda()
             for model_name in tested_models:
                 for version in custom_versions:
                     ckpt_file = train_path + model_name + '_' + version + ext
                     if os.path.exists(ckpt_file):
-                        get_CKA(val_path, model, exp_name, timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(), model_name+version, loader)
-                ckpt_file = train_path + model_name + '_scratch' + ext
+                        get_CKA(val_path, model, exp_name, timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(), 'custom_' + model_name+'_'+version, loader)
+                ckpt_file = train_path + model_name + ext
                 if os.path.exists(ckpt_file):
                     get_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(), model_name+'_scratch', loader)
                 get_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(), model_name+'_pretrained', loader)
-
-            # with open(val_path + '/Validation.csv', 'w+', newline='') as csvfile:
-            #     writer = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            #     writer.writerow(['Data', 'Loss', 'Acc@1', 'Acc@5'])
-            #     writer.writerow(['Clean', clean_metrics['loss'], clean_metrics['top1'], clean_metrics['top5']])
-            #     writer.writerow(['Adv', adv_metrics['loss'], adv_metrics['top1'], adv_metrics['top5']])
-        else:
-            print("Error: Results already existing:", val_path.split('/')[-1])
     else:
         print("Error: Model asked does not exist:", ckpt_path.split('/')[-1])
         if not custom_model:

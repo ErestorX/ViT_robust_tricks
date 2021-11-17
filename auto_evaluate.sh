@@ -10,4 +10,4 @@ for v in {0..4}; do
   python3 Eval_robustness.py --version "$v" -p
 done
 
-python3 combine_eval_summaries.py
+#python3 combine_eval_summaries.py

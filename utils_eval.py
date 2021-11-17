@@ -1,3 +1,5 @@
+import os.path
+
 from torch.utils.tensorboard import SummaryWriter
 from matplotlib.ticker import PercentFormatter
 import matplotlib.pyplot as plt
@@ -7,28 +9,28 @@ import numpy as np
 import torch
 import cv2
 
-DEVICE = torch.device('cuda')
-
-def gram(X):
-    # ensure correct input shape
-    X = rearrange(X, 'b ... -> b (...)')
-    return X @ X.T
-
-def centering_mat(n):
-    v_i = torch.ones(n,1, device=DEVICE)
-    H = torch.eye(n, device=DEVICE) - (v_i @ v_i.T) / n
-    return H
 
 def centered_gram(X):
+    def gram(X):
+        # ensure correct input shape
+        X = rearrange(X, 'b ... -> b (...)')
+        return X @ X.T
+
+    def centering_mat(n):
+        v_i = torch.ones(n, 1).cuda()
+        H = torch.eye(n).cuda() - (v_i @ v_i.T) / n
+        return H
+
     K = gram(X)
     m = K.shape[0]
     H = centering_mat(m)
     return H @ K @ H
 
-def unbiased_hsic_xy(X,Y):
+
+def unbiased_hsic_xy(X, Y):
     n = X.shape[0]
     assert n > 3
-    v_i = torch.ones(n,1, device=DEVICE)
+    v_i = torch.ones(n, 1).cuda()
     K = centered_gram(X)
     L = centered_gram(Y)
     KL = K @ L
@@ -38,10 +40,10 @@ def unbiased_hsic_xy(X,Y):
     iLi = v_i.T @ Li
 
     a = torch.trace(KL)
-    b = iKi * iLi / ((n-1)*(n-2))
-    c = iK @ Li * 2 / (n-2)
+    b = iKi * iLi / ((n - 1) * (n - 2))
+    c = iK @ Li * 2 / (n - 2)
 
-    outv = (a + b - c) / (n*(n-3))
+    outv = (a + b - c) / (n * (n - 3))
     return outv.long().item()
 
 
@@ -55,11 +57,13 @@ class MinibatchCKA(Metric):
         self.add_state("_xx", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("_xy", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("_yy", default=torch.tensor(0), dist_reduce_fx="sum")
+
     def update(self, X: torch.Tensor, Y: torch.Tensor):
         # NB: torchmetrics Bootstrap resampling janks up batch shape by varying number of samples per batch
-        self._xx += unbiased_hsic_xy(X,X)
-        self._xy += unbiased_hsic_xy(X,Y)
-        self._yy += unbiased_hsic_xy(Y,Y)
+        self._xx += unbiased_hsic_xy(X, X)
+        self._xy += unbiased_hsic_xy(X, Y)
+        self._yy += unbiased_hsic_xy(Y, Y)
+
     def compute(self):
         xx, xy, yy = self._xx, self._xy, self._yy
         return xy / (torch.sqrt(xx) * torch.sqrt(yy))
@@ -69,7 +73,6 @@ class HookedCache:
     def __init__(self, model, target):
         self.model = model
         self.target = target
-
         self.clear()
         self._extract_target()
         self._register_hook()
@@ -100,36 +103,35 @@ def get_simmat_from_metrics(metrics):
         for j, cka in enumerate(ckas):
             z = cka.compute().item()
             vals.append((i, j, z))
-
     sim_mat = torch.zeros(i + 1, j + 1)
     for i, j, z in vals:
         sim_mat[i, j] = z
-
     return sim_mat
 
 
 def make_pairwise_metrics(mod1_hooks, mod2_hooks):
-  metrics = []
-  for i_ in mod1_hooks:
-    metrics.append([])
-    for j_ in mod2_hooks:
-      metrics[-1].append(MinibatchCKA().cuda())
-  return metrics
+    metrics = []
+    for _ in mod1_hooks:
+        metrics.append([])
+        for _ in mod2_hooks:
+            metrics[-1].append(MinibatchCKA().cuda())
+    return metrics
 
 
-def update_metrics(mod1_hooks, mod2_hooks, metrics, metric_name, it, writer):
+def update_metrics(mod1_hooks, mod2_hooks, metrics, metric_name, it, writer, do_log):
     for i, hook1 in enumerate(mod1_hooks):
-      for j, hook2 in enumerate(mod2_hooks):
-        cka = metrics[i][j]
-        X,Y = hook1.value, hook2.value
-        cka.update(X,Y)
-        if 0 in (i,j):
-          _metric_name = f"{metric_name}_{i}-{j}"
-          v = cka.compute()
-          writer.add_scalar(_metric_name, v, it)
-    sim_mat = get_simmat_from_metrics(metrics)
-    sim_mat = sim_mat.unsqueeze(0) * 255
-    writer.add_image(metric_name, sim_mat, it)
+        for j, hook2 in enumerate(mod2_hooks):
+            cka = metrics[i][j]
+            X, Y = hook1.value, hook2.value
+            cka.update(X, Y)
+            if 0 in (i, j):
+                _metric_name = f"{metric_name}_{i}-{j}"
+                v = cka.compute()
+                writer.add_scalar(_metric_name, v, it)
+    if do_log:
+        sim_mat = get_simmat_from_metrics(metrics)
+        sim_mat = sim_mat.unsqueeze(0) * 255
+        writer.add_image(metric_name, sim_mat, it)
 
 
 def average_q_px_dist_per_head_per_block(title, fname, loader, model):
@@ -159,7 +161,7 @@ def average_q_px_dist_per_head_per_block(title, fname, loader, model):
             attn = attn.permute(1, 0, 2, 3)
             vect = torch.arange(N).reshape((1, N))
             dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
-                        (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
+                    (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
             per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
                 attn, (1, 2, 3))
             qkvs[block] = per_head_dist_map * patch_size
@@ -202,6 +204,14 @@ def freq_hist(title, val_path):
 
 
 def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader):
+    if model_t_name == model_c_name:
+        plt_name = 'self CKA: ' + model_t_name
+        fig_name = val_path + '/CKA_' + model_t_name + '.png'
+    else:
+        plt_name = 'CKA: ' + model_t_name + ' ' + model_c_name
+        fig_name = val_path + '/CKA_' + model_t_name + '_|_' + model_c_name + '.png'
+    if os.path.exists(fig_name):
+        return
     writer = SummaryWriter()
     modc_hooks = []
     for j, block in enumerate(model_c.blocks):
@@ -214,31 +224,20 @@ def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader)
         tgt = f'blocks.{j}'
         hook = HookedCache(model_t, tgt)
         modt_hooks.append(hook)
-
     metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
-    metrics_tt = make_pairwise_metrics(modt_hooks, modt_hooks)
 
     with torch.no_grad():
-
         for it, (input, target) in enumerate(data_loader):
-            # batch = batch.cuda()
-            outv_c = model_c(input)
-            outv_t = model_t(input)
-
-            update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer)
-            update_metrics(modt_hooks, modt_hooks, metrics_tt, "cka/tt", it, writer)
-
+            do_log = (it % 10 == 0)
+            _ = model_c(input)
+            _ = model_t(input)
+            update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
             for hook0 in modc_hooks:
                 for hook1 in modt_hooks:
                     hook0.clear()
                     hook1.clear()
 
-    sim_mat = get_simmat_from_metrics(metrics_tt)
-    plt.imshow(sim_mat)
-    plt.title('Self CKA: ' + model_t_name)
-    plt.savefig(val_path + '/Self_CKA.png')
-
     sim_mat = get_simmat_from_metrics(metrics_ct)
     plt.imshow(sim_mat)
-    plt.title('CKA: ' + model_t_name + ' ' + model_c_name)
-    plt.savefig(val_path + '/CKA' + model_t_name + '_' + model_c_name + '.png')
+    plt.title(plt_name)
+    plt.savefig(fig_name)

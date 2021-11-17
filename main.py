@@ -289,9 +289,9 @@ parser.add_argument('--log-wandb', action='store_true', default=False,
                     help='log training and validation metrics to wandb')
 
 # custom args
-parser.add_argument('--timm_model', action='store_true', default=False,
+parser.add_argument('--custom', action='store_true', default=False,
                     help='switch from using custom model to original timm model')
-parser.add_argument('--do_mode', default='exp', type=str,
+parser.add_argument('--custom_do', default='exp', type=str,
                     help='change the mode of the variable dropout')
 
 
@@ -313,7 +313,7 @@ def _parse_args():
         args.drop = 0.1
         args.drop_path = 0.1
         args.dr = 0.03
-    if not args.timm_model:
+    if args.custom:
         args.model = 'custom_' + args.model
 
     # Cache the args as a text string to save them in the output dir later
@@ -383,8 +383,8 @@ def main():
         bn_eps=args.bn_eps,
         scriptable=args.torchscript,
         checkpoint_path=args.initial_checkpoint)
-    if not args.timm_model:
-        model.do_mode = args.do_mode
+    if args.custom:
+        model.do_mode = args.custom_do
 
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'

@@ -46,13 +46,48 @@ def summarize_visualization(val_path, exp_list, file):
     new_im.save(val_path + 'Summary_' + file)
 
 
+def summarize_CKA(val_path, exp_list):
+    models_list = ['_'.join(model.split('_')[:-1]) for model in exp_list]
+    models_list = sorted(list(set(models_list)))
+    id_exp = ['_'.join(model.split('_')[-1:]) for model in exp_list]
+    id_exp = sorted(list(set(id_exp)))
+    id_exp.remove('pretrained')
+    id_exp.remove('scratch')
+    id_exp = ['pretrained', 'scratch'] + id_exp
+    folder_list = []
+    for model_name in models_list:
+        for exp_name in id_exp:
+            if os.path.exists(val_path + model_name + '_' + exp_name):
+                folder_list.append('_'.join([model_name, exp_name]))
+    full_exp_name = ['custom_' + name if name.split('_')[-1] not in ['pretrained', 'scratch'] else name for name in folder_list]
+    new_im, total_width, total_height = None, None, None
+    for col_id, (folder_origin, exp_origin) in enumerate(zip(folder_list, full_exp_name)):
+        for row_id, exp_target in enumerate(full_exp_name):
+            if row_id < col_id:
+                continue
+            if exp_origin == exp_target:
+                file_name = val_path + folder_origin + '/CKA_' + exp_origin + '.png'
+            else:
+                file_name = val_path + folder_origin + '/CKA_' + exp_origin + '_|_' + exp_target + '.png'
+            im = Image.open(file_name).convert('RGB')
+            if new_im is None:
+                total_width = np.asarray(im).shape[1] * len(folder_list)
+                total_height = np.asarray(im).shape[0] * len(folder_list)
+                new_im = Image.new('RGB', (total_width, total_height))
+                new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
+            new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
+        new_im.save(val_path + 'Summary_CKA.png')
+
+
 def main():
     args = parser.parse_args()
     exp_list = [exp for exp in os.listdir(args.val_path) if os.path.isdir(args.val_path + exp)]
-    summarize_experiments(args.val_path, exp_list)
+    # summarize_experiments(args.val_path, exp_list)
     for file in os.listdir(args.val_path + exp_list[0]):
-        if file.split('.')[-1] == 'png':
-            summarize_visualization(args.val_path, exp_list, file)
+        if file.split('.')[-1] == 'png' and file.split('_')[0] != 'CKA':
+            # summarize_visualization(args.val_path, exp_list, file)
+            pass
+    summarize_CKA(args.val_path, exp_list)
 
 
 if __name__ == '__main__':
