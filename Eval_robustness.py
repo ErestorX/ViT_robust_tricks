@@ -25,7 +25,7 @@ def get_val_loader(data_path, batch_size=64):
     distributed = False
     if 'WORLD_SIZE' in os.environ:
         distributed = int(os.environ['WORLD_SIZE']) > 1
-    dataset_eval = timm.data.create_dataset('', root=data_path, split='validation', is_training=False, batch_size=128)
+    dataset_eval = timm.data.create_dataset('', root=data_path, split='validation', is_training=False, batch_size=batch_size)
     loader_eval = timm.data.create_loader(
         dataset_eval,
         input_size=[3, 224, 224],
