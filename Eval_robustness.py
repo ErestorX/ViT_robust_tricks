@@ -185,7 +185,6 @@ def validate_attack(model, loader, loss_fn, val_path):
 
 def main():
     args = parser.parse_args()
-    args.data = None
     custom_model = args.ckpt != ''
     train_path = 'output/train/'
     val_path = 'output/val/'
