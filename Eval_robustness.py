@@ -18,6 +18,7 @@ parser.add_argument('--data', default='/home2/hugo/ImageNet', type=str)
 parser.add_argument('--version', default=0, type=int)
 parser.add_argument('--ckpt', default='', type=str)
 parser.add_argument('-p', action='store_true', default=False)
+parser.add_argument('-b', default=64, type=int)
 
 
 def get_val_loader(data_path, batch_size=64):
@@ -203,7 +204,7 @@ def main():
         ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
         val_path = val_path + tested_models[args.version] + '_' + args.ckpt
         exp_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt
-    loader = get_val_loader(args.data, batch_size=128)
+    loader = get_val_loader(args.data, batch_size=args.b)
     if os.path.exists(ckpt_path) or args.p:
         if not os.path.exists(val_path):
             os.mkdir(val_path)
