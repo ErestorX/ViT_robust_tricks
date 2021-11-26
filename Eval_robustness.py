@@ -235,7 +235,7 @@ def main():
             model = timm.create_model(
                 'custom_' + tested_models[args.version] if custom_model else tested_models[args.version],
                 checkpoint_path=ckpt_file)
-        loader = get_val_loader()
+        loader = get_val_loader(args.data, batch_size=128)
         model = model.cuda()
         for model_name in tested_models:
             for version in custom_versions:
