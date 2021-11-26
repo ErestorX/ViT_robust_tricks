@@ -225,9 +225,7 @@ def main():
                 writer.writerow(['Data', 'Loss', 'Acc@1', 'Acc@5'])
                 writer.writerow(['Clean', clean_metrics['loss'], clean_metrics['top1'], clean_metrics['top5']])
                 writer.writerow(['Adv', adv_metrics['loss'], adv_metrics['top1'], adv_metrics['top5']])
-        else:
-            print("Error: Results already existing:", val_path.split('/')[-1])
-        print("\tUpdating CKA and adversarial CKA visualizations regardless.")
+
         loss_fn = nn.CrossEntropyLoss().cuda()
         ckpt_file = ckpt_path + ext
         if args.p and not custom_model:
@@ -245,7 +243,7 @@ def main():
                     get_adversarial_CKA(val_path, model, exp_name,
                                         timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(),
                                         'custom_' + model_name + '_' + version, loader, loss_fn)
-            ckpt_file = train_path + model_name + '_scratch' + ext
+            ckpt_file = train_path + model_name + ext
             if os.path.exists(ckpt_file):
                 get_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(), model_name+'_scratch', loader)
                 get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(),
@@ -253,10 +251,6 @@ def main():
             get_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(), model_name+'_pretrained', loader)
             get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(),
                                 model_name + '_pretrained', loader, loss_fn)
-    else:
-        print("Error: Model asked does not exist:", ckpt_path.split('/')[-1])
-        if not custom_model:
-            print("\tOnly the pretrained version is available.")
 
 
 if __name__ == '__main__':

@@ -211,7 +211,6 @@ def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader)
         plt_name = 'CKA:\n' + model_t_name + '\n' + model_c_name
         fig_name = val_path + '/CKA_' + model_t_name + '_|_' + model_c_name + '.png'
     if os.path.exists(fig_name):
-        print("Error: Already existing CKA visualization:", fig_name)
         return
     writer = SummaryWriter()
     modc_hooks = []
@@ -253,7 +252,6 @@ def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, 
         plt_name = 'Adversarial CKA:\n' + model_t_name + '\n' + model_c_name
         fig_name = val_path + '/CKA_adv_' + model_t_name + '_|_' + model_c_name + '.png'
     if os.path.exists(fig_name):
-        print("Error: Already existing adversarial CKA visualization:", fig_name)
         return
     writer = SummaryWriter()
 
