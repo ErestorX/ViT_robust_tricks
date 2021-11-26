@@ -204,7 +204,7 @@ def main():
         ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
         val_path = val_path + tested_models[args.version] + '_' + args.ckpt
         exp_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt
-    loader = get_val_loader(args.data, batch_size=args.b)
+    loader = get_val_loader(args.data, batch_size=64)
     if os.path.exists(ckpt_path) or args.p:
         if not os.path.exists(val_path):
             os.mkdir(val_path)
