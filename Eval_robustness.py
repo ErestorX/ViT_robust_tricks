@@ -14,7 +14,7 @@ import os
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', default='/data/hugo/ImageNet', type=str)
+parser.add_argument('--data', default='/home2/hugo/ImageNet', type=str)
 parser.add_argument('--version', default=0, type=int)
 parser.add_argument('--ckpt', default='', type=str)
 parser.add_argument('-p', action='store_true', default=False)
@@ -184,6 +184,7 @@ def validate_attack(model, loader, loss_fn, val_path):
 
 def main():
     args = parser.parse_args()
+    args.data = None
     custom_model = args.ckpt != ''
     train_path = 'output/train/'
     val_path = 'output/val/'
@@ -202,6 +203,7 @@ def main():
         ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
         val_path = val_path + tested_models[args.version] + '_' + args.ckpt
         exp_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt
+    loader = get_val_loader(args.data, batch_size=128)
     if os.path.exists(ckpt_path) or args.p:
         if not os.path.exists(val_path):
             os.mkdir(val_path)
@@ -210,7 +212,6 @@ def main():
                 model = timm.create_model(tested_models[args.version], pretrained=True)
             else:
                 model = timm.create_model('custom_' + tested_models[args.version] if custom_model else tested_models[args.version], checkpoint_path=ckpt_file)
-            loader = get_val_loader(args.data, batch_size=128)
             model = model.cuda()
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
@@ -235,7 +236,6 @@ def main():
             model = timm.create_model(
                 'custom_' + tested_models[args.version] if custom_model else tested_models[args.version],
                 checkpoint_path=ckpt_file)
-        loader = get_val_loader(args.data, batch_size=128)
         model = model.cuda()
         for model_name in tested_models:
             for version in custom_versions:
@@ -243,16 +243,16 @@ def main():
                 if os.path.exists(ckpt_file):
                     get_CKA(val_path, model, exp_name, timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(), 'custom_' + model_name+'_'+version, loader)
                     get_adversarial_CKA(val_path, model, exp_name,
-                            timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(),
-                            'custom_' + model_name + '_' + version, loader, loss_fn)
-            ckpt_file = train_path + model_name + ext
+                                        timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(),
+                                        'custom_' + model_name + '_' + version, loader, loss_fn)
+            ckpt_file = train_path + model_name + '_scratch' + ext
             if os.path.exists(ckpt_file):
                 get_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(), model_name+'_scratch', loader)
                 get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(),
-                        model_name + '_scratch', loader, loss_fn)
+                                    model_name + '_scratch', loader, loss_fn)
             get_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(), model_name+'_pretrained', loader)
             get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(),
-                    model_name + '_pretrained', loader, loss_fn)
+                                model_name + '_pretrained', loader, loss_fn)
     else:
         print("Error: Model asked does not exist:", ckpt_path.split('/')[-1])
         if not custom_model:
