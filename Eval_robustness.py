@@ -14,7 +14,7 @@ import os
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', default='data/hugo/ImageNet', type=str)
+parser.add_argument('--data', default='/data/hugo/ImageNet', type=str)
 parser.add_argument('--version', default=0, type=int)
 parser.add_argument('--ckpt', default='', type=str)
 parser.add_argument('-p', action='store_true', default=False)
