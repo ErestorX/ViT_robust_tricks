@@ -1,4 +1,6 @@
-from utils_eval import average_q_px_dist_per_head_per_block, freq_hist, get_CKA
+import matplotlib.pyplot as plt
+
+from utils_eval import average_q_px_dist_per_head_per_block, freq_hist, get_CKA, get_adversarial_CKA
 from torchvision.utils import save_image
 from collections import OrderedDict
 from contextlib import suppress
@@ -19,7 +21,7 @@ parser.add_argument('--ckpt', default='', type=str)
 parser.add_argument('-p', action='store_true', default=False)
 
 
-def get_val_loader():
+def get_val_loader(batch_size=64):
     distributed = False
     if 'WORLD_SIZE' in os.environ:
         distributed = int(os.environ['WORLD_SIZE']) > 1
@@ -28,7 +30,7 @@ def get_val_loader():
     loader_eval = timm.data.create_loader(
         dataset_eval,
         input_size=[3, 224, 224],
-        batch_size=64,
+        batch_size=batch_size,
         is_training=False,
         use_prefetcher=True,
         interpolation='bicubic',
@@ -210,7 +212,7 @@ def main():
                 model = timm.create_model(tested_models[args.version], pretrained=True)
             else:
                 model = timm.create_model('custom_' + tested_models[args.version] if custom_model else tested_models[args.version], checkpoint_path=ckpt_file)
-            loader = get_val_loader()
+            loader = get_val_loader(batch_size=128)
             model = model.cuda()
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
@@ -225,25 +227,34 @@ def main():
                 writer.writerow(['Clean', clean_metrics['loss'], clean_metrics['top1'], clean_metrics['top5']])
                 writer.writerow(['Adv', adv_metrics['loss'], adv_metrics['top1'], adv_metrics['top5']])
         else:
-            print("Error: Results already existing:", val_path.split('/')[-1], "\n\tUpdating CKA visualization regardless.")
-            ckpt_file = ckpt_path + ext
-            if args.p and not custom_model:
-                model = timm.create_model(tested_models[args.version], pretrained=True)
-            else:
-                model = timm.create_model(
-                    'custom_' + tested_models[args.version] if custom_model else tested_models[args.version],
-                    checkpoint_path=ckpt_file)
-            loader = get_val_loader()
-            model = model.cuda()
-            for model_name in tested_models:
-                for version in custom_versions:
-                    ckpt_file = train_path + model_name + '_' + version + ext
-                    if os.path.exists(ckpt_file):
-                        get_CKA(val_path, model, exp_name, timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(), 'custom_' + model_name+'_'+version, loader)
-                ckpt_file = train_path + model_name + ext
+            print("Error: Results already existing:", val_path.split('/')[-1])
+        print("\tUpdating CKA and adversarial CKA visualizations regardless.")
+        loss_fn = nn.CrossEntropyLoss().cuda()
+        ckpt_file = ckpt_path + ext
+        if args.p and not custom_model:
+            model = timm.create_model(tested_models[args.version], pretrained=True)
+        else:
+            model = timm.create_model(
+                'custom_' + tested_models[args.version] if custom_model else tested_models[args.version],
+                checkpoint_path=ckpt_file)
+        loader = get_val_loader()
+        model = model.cuda()
+        for model_name in tested_models:
+            for version in custom_versions:
+                ckpt_file = train_path + model_name + '_' + version + ext
                 if os.path.exists(ckpt_file):
-                    get_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(), model_name+'_scratch', loader)
-                get_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(), model_name+'_pretrained', loader)
+                    get_CKA(val_path, model, exp_name, timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(), 'custom_' + model_name+'_'+version, loader)
+                    get_adversarial_CKA(val_path, model, exp_name,
+                            timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(),
+                            'custom_' + model_name + '_' + version, loader, loss_fn)
+            ckpt_file = train_path + model_name + ext
+            if os.path.exists(ckpt_file):
+                get_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(), model_name+'_scratch', loader)
+                get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(),
+                        model_name + '_scratch', loader, loss_fn)
+            get_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(), model_name+'_pretrained', loader)
+            get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(),
+                    model_name + '_pretrained', loader, loss_fn)
     else:
         print("Error: Model asked does not exist:", ckpt_path.split('/')[-1])
         if not custom_model:

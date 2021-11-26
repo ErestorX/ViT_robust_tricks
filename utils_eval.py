@@ -205,12 +205,13 @@ def freq_hist(title, val_path):
 
 def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader):
     if model_t_name == model_c_name:
-        plt_name = 'self CKA: ' + model_t_name
+        plt_name = 'self CKA:\n' + model_t_name
         fig_name = val_path + '/CKA_' + model_t_name + '.png'
     else:
-        plt_name = 'CKA: ' + model_t_name + ' ' + model_c_name
+        plt_name = 'CKA:\n' + model_t_name + '\n' + model_c_name
         fig_name = val_path + '/CKA_' + model_t_name + '_|_' + model_c_name + '.png'
     if os.path.exists(fig_name):
+        print("Error: Already existing CKA visualization:", fig_name)
         return
     writer = SummaryWriter()
     modc_hooks = []
@@ -241,3 +242,52 @@ def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader)
     plt.imshow(sim_mat)
     plt.title(plt_name)
     plt.savefig(fig_name)
+    return sim_mat
+
+
+def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.03):
+    if model_t_name == model_c_name:
+        plt_name = 'self Adversarial CKA:\n' + model_t_name
+        fig_name = val_path + '/CKA_adv_' + model_t_name + '.png'
+    else:
+        plt_name = 'Adversarial CKA:\n' + model_t_name + '\n' + model_c_name
+        fig_name = val_path + '/CKA_adv_' + model_t_name + '_|_' + model_c_name + '.png'
+    if os.path.exists(fig_name):
+        print("Error: Already existing adversarial CKA visualization:", fig_name)
+        return
+    writer = SummaryWriter()
+
+    modc_hooks = []
+    for j, block in enumerate(model_c.blocks):
+        tgt = f'blocks.{j}'
+        hook = HookedCache(model_c, tgt)
+        modc_hooks.append(hook)
+
+    modt_hooks = []
+    for j, block in enumerate(model_t.blocks):
+        tgt = f'blocks.{j}'
+        hook = HookedCache(model_t, tgt)
+        modt_hooks.append(hook)
+    metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
+
+    for it, (input, target) in enumerate(data_loader):
+        do_log = (it % 10 == 0)
+        _ = model_c(input)
+        input.requires_grad = True
+        output = model_c(input)
+        cost = loss_fn(output, target)
+        grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+        perturbedImage = input + epsilonMax * grad.sign()
+        perturbedImage = torch.clamp(perturbedImage, -1, 1)
+        _ = model_t(perturbedImage)
+        update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
+        for hook0 in modc_hooks:
+            for hook1 in modt_hooks:
+                hook0.clear()
+                hook1.clear()
+
+    sim_mat = get_simmat_from_metrics(metrics_ct)
+    plt.imshow(sim_mat)
+    plt.title(plt_name)
+    plt.savefig(fig_name)
+    return sim_mat
