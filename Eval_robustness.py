@@ -1,5 +1,3 @@
-import matplotlib.pyplot as plt
-
 from utils_eval import average_q_px_dist_per_head_per_block, freq_hist, get_CKA, get_adversarial_CKA
 from torchvision.utils import save_image
 from collections import OrderedDict
@@ -16,18 +14,17 @@ import os
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', default='/data/hugo/ImageNet', type=str)
+parser.add_argument('--data', default='data/hugo/ImageNet', type=str)
 parser.add_argument('--version', default=0, type=int)
 parser.add_argument('--ckpt', default='', type=str)
 parser.add_argument('-p', action='store_true', default=False)
 
 
-def get_val_loader(batch_size=64):
+def get_val_loader(data_path, batch_size=64):
     distributed = False
     if 'WORLD_SIZE' in os.environ:
         distributed = int(os.environ['WORLD_SIZE']) > 1
-    dataset_eval = timm.data.create_dataset(
-        '', root='/media/hlemarchant/Data/ImageNet', split='validation', is_training=False, batch_size=128)
+    dataset_eval = timm.data.create_dataset('', root=data_path, split='validation', is_training=False, batch_size=128)
     loader_eval = timm.data.create_loader(
         dataset_eval,
         input_size=[3, 224, 224],
@@ -213,7 +210,7 @@ def main():
                 model = timm.create_model(tested_models[args.version], pretrained=True)
             else:
                 model = timm.create_model('custom_' + tested_models[args.version] if custom_model else tested_models[args.version], checkpoint_path=ckpt_file)
-            loader = get_val_loader(batch_size=128)
+            loader = get_val_loader(args.data, batch_size=128)
             model = model.cuda()
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
