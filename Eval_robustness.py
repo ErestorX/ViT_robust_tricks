@@ -243,17 +243,17 @@ def main():
                     adv_CKA_mat = get_adversarial_CKA(val_path, model, exp_name,
                                         timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(),
                                         'custom_' + model_name + '_' + version, loader, loss_fn)
-                    combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name)
+                    combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
             ckpt_file = train_path + model_name + ext
             if os.path.exists(ckpt_file):
                 CKA_mat, name = get_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(), model_name+'_scratch', loader)
                 adv_CKA_mat = get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(),
                                     model_name + '_scratch', loader, loss_fn)
-                combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name)
+                combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
             CKA_mat, name = get_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(), model_name+'_pretrained', loader)
             adv_CKA_mat = get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(),
                                 model_name + '_pretrained', loader, loss_fn)
-            combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name)
+            combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
 
 
 if __name__ == '__main__':

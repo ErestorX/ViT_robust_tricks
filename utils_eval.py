@@ -211,7 +211,7 @@ def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader)
         plt_name = 'CKA:\n' + model_t_name + '\n' + model_c_name
         fig_name = val_path + '/CKA_' + model_t_name + '_|_' + model_c_name + '.png'
     if os.path.exists(fig_name):
-        return
+        return None, [model_t_name, model_c_name]
     writer = SummaryWriter()
     modc_hooks = []
     for j, block in enumerate(model_c.blocks):
@@ -241,7 +241,7 @@ def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader)
     plt.imshow(sim_mat)
     plt.title(plt_name)
     plt.savefig(fig_name)
-    return sim_mat, plt_name.split('\n')
+    return sim_mat, [model_t_name, model_c_name]
 
 
 def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.03):
@@ -252,7 +252,7 @@ def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, 
         plt_name = 'Adversarial CKA:\n' + model_t_name + '\n' + model_c_name
         fig_name = val_path + '/CKA_adv_' + model_t_name + '_|_' + model_c_name + '.png'
     if os.path.exists(fig_name):
-        return
+        return None, [model_t_name, model_c_name]
     writer = SummaryWriter()
 
     modc_hooks = []
@@ -292,6 +292,8 @@ def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, 
 
 
 def combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, exp_name, val_path):
+    if CKA_mat == None or adv_CKA_mat == None:
+        return
     diff_mat = CKA_mat - adv_CKA_mat
     plt.imshow(diff_mat)
     plt.title("CKA and adversarial CKA difference:\n" + "\n".join(exp_name))
