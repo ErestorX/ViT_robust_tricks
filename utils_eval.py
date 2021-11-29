@@ -241,7 +241,7 @@ def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader)
     plt.imshow(sim_mat)
     plt.title(plt_name)
     plt.savefig(fig_name)
-    return sim_mat
+    return sim_mat, plt_name.split('\n')
 
 
 def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.03):
@@ -289,3 +289,10 @@ def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, 
     plt.title(plt_name)
     plt.savefig(fig_name)
     return sim_mat
+
+
+def combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, exp_name, val_path):
+    diff_mat = CKA_mat - adv_CKA_mat
+    plt.imshow(diff_mat)
+    plt.title("CKA and adversarial CKA difference:\n" + "\n".join(exp_name))
+    plt.savefig(val_path + '/diff_CKA_' + '_|_'.join(exp_name) + '.png')
