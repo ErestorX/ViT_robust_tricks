@@ -127,7 +127,7 @@ def summarize_CKA_diff(val_path, exp_list):
     new_im, total_width, total_height = None, None, None
     for col_id, (folder_origin, exp_origin) in enumerate(zip(folder_list, full_exp_name)):
         for row_id, exp_target in enumerate(full_exp_name):
-            file_name = val_path + folder_origin + '/CKA_adv_' + exp_origin + '_|_' + exp_target + '.png'
+            file_name = val_path + folder_origin + '/diff_CKA_' + exp_origin + '_|_' + exp_target + '.png'
             im = Image.open(file_name).convert('RGB')
             if new_im is None:
                 total_width = np.asarray(im).shape[1] * len(folder_list)
