@@ -146,7 +146,7 @@ def main():
     exp_list = [exp for exp in os.listdir(args.val_path) if os.path.isdir(args.val_path + exp)]
     summarize_experiments(args.val_path, exp_list)
     for file in os.listdir(args.val_path + exp_list[0]):
-        if file.split('.')[-1] == 'png' and file.split('_')[0] != 'CKA':
+        if file.split('.')[-1] == 'png' and 'CKA' not in file:
             summarize_visualization(args.val_path, exp_list, file)
     summarize_CKA(args.val_path, exp_list)
     summarize_adversarial_CKA(args.val_path, exp_list)
