@@ -76,7 +76,7 @@ def summarize_CKA(val_path, exp_list):
                 new_im = Image.new('RGB', (total_width, total_height))
                 new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
             new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-        new_im.save(val_path + 'Summary_CKA.png')
+    new_im.save(val_path + 'Summary_CKA.png')
 
 
 def summarize_adversarial_CKA(val_path, exp_list):
@@ -107,7 +107,7 @@ def summarize_adversarial_CKA(val_path, exp_list):
                 new_im = Image.new('RGB', (total_width, total_height))
                 new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
             new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-        new_im.save(val_path + 'Summary_adversarial_CKA.png')
+    new_im.save(val_path + 'Summary_adversarial_CKA.png')
 
 
 def summarize_CKA_diff(val_path, exp_list):
@@ -127,10 +127,7 @@ def summarize_CKA_diff(val_path, exp_list):
     new_im, total_width, total_height = None, None, None
     for col_id, (folder_origin, exp_origin) in enumerate(zip(folder_list, full_exp_name)):
         for row_id, exp_target in enumerate(full_exp_name):
-            if exp_origin == exp_target:
-                file_name = val_path + folder_origin + '/CKA_adv_' + exp_origin + '.png'
-            else:
-                file_name = val_path + folder_origin + '/CKA_adv_' + exp_origin + '_|_' + exp_target + '.png'
+            file_name = val_path + folder_origin + '/CKA_adv_' + exp_origin + '_|_' + exp_target + '.png'
             im = Image.open(file_name).convert('RGB')
             if new_im is None:
                 total_width = np.asarray(im).shape[1] * len(folder_list)
@@ -138,7 +135,7 @@ def summarize_CKA_diff(val_path, exp_list):
                 new_im = Image.new('RGB', (total_width, total_height))
                 new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
             new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-        new_im.save(val_path + 'Summary_CKA_diff.png')
+    new_im.save(val_path + 'Summary_CKA_diff.png')
 
 
 def main():
