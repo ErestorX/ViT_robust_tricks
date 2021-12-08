@@ -1,5 +1,5 @@
 import os.path
-
+from collections import OrderedDict
 from torch.utils.tensorboard import SummaryWriter
 from matplotlib.ticker import PercentFormatter
 import matplotlib.pyplot as plt
@@ -183,6 +183,7 @@ def average_q_px_dist_per_head_per_block(title, fname, loader, model):
     ax.set_ylim(ymax=180, ymin=0)
     plt.savefig(fname + '/Attn_dist.png')
     plt.close()
+    return vals
 
 
 def freq_hist(title, val_path):
@@ -296,5 +297,6 @@ def combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, exp_name, val_path):
         return
     diff_mat = CKA_mat - adv_CKA_mat
     plt.imshow(diff_mat)
+    exp_name = list(OrderedDict.fromkeys(exp_name))
     plt.title("CKA and adversarial CKA difference:\n" + "\n".join(exp_name))
     plt.savefig(val_path + '/diff_CKA_' + '_|_'.join(exp_name) + '.png')

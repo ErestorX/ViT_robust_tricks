@@ -6,6 +6,7 @@ from timm.utils import *
 from torch import nn
 import argparse
 import models
+import json
 import torch
 import time
 import timm
@@ -204,6 +205,7 @@ def main():
         val_path = val_path + tested_models[args.version] + '_' + args.ckpt
         exp_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt
     loader = get_val_loader(args.data, batch_size=args.b)
+    json_summaries = {}
     if os.path.exists(ckpt_path) or args.p:
         if not os.path.exists(val_path):
             os.mkdir(val_path)
@@ -215,17 +217,23 @@ def main():
             model = model.cuda()
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
-            average_q_px_dist_per_head_per_block(val_path.split('/')[-1], val_path, loader, model)
+            att_distances = average_q_px_dist_per_head_per_block(val_path.split('/')[-1], val_path, loader, model)
             clean_metrics = validate(model, loader, validate_loss_fn, val_path)
             adv_metrics = validate_attack(model, loader, validate_loss_fn, val_path)
             freq_hist(val_path.split('/')[-1], val_path)
+
+            json_summaries['attdistances'] = att_distances.tolist()
+            json_summaries['clean_metrics'] = clean_metrics
+            json_summaries['adv_metrics'] = adv_metrics
 
             with open(val_path + '/Validation.csv', 'w+', newline='') as csvfile:
                 writer = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
                 writer.writerow(['Data', 'Loss', 'Acc@1', 'Acc@5'])
                 writer.writerow(['Clean', clean_metrics['loss'], clean_metrics['top1'], clean_metrics['top5']])
                 writer.writerow(['Adv', adv_metrics['loss'], adv_metrics['top1'], adv_metrics['top5']])
-
+        else:
+            with open(val_path + '/json_summaries.json', 'r') as j_file:
+                json_summaries = json.load(j_file)
         loss_fn = nn.CrossEntropyLoss().cuda()
         ckpt_file = ckpt_path + ext
         if args.p and not custom_model:
@@ -244,17 +252,24 @@ def main():
                                         timm.create_model('custom_' + model_name, checkpoint_path=ckpt_file).cuda(),
                                         'custom_' + model_name + '_' + version, loader, loss_fn)
                     combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
+                    json_summaries[exp_name + '_VS_' + 'custom_' + model_name+'_'+version] = CKA_mat.tolist()
+                    json_summaries['adv_' + exp_name + '_VS_' + 'custom_' + model_name + '_' + version] = adv_CKA_mat.tolist()
             ckpt_file = train_path + model_name + ext
             if os.path.exists(ckpt_file):
                 CKA_mat, name = get_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(), model_name+'_scratch', loader)
                 adv_CKA_mat = get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, checkpoint_path=ckpt_file).cuda(),
                                     model_name + '_scratch', loader, loss_fn)
                 combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
+                json_summaries[exp_name + '_VS_' + model_name+'_scratch'] = CKA_mat.tolist()
+                json_summaries['adv_' + exp_name + '_VS_' + model_name+'_scratch'] = adv_CKA_mat.tolist()
             CKA_mat, name = get_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(), model_name+'_pretrained', loader)
             adv_CKA_mat = get_adversarial_CKA(val_path, model, exp_name, timm.create_model(model_name, pretrained=True).cuda(),
                                 model_name + '_pretrained', loader, loss_fn)
             combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
-
+            json_summaries[exp_name + '_VS_' + model_name+'_pretrained'] = CKA_mat.tolist()
+            json_summaries['adv_' + exp_name + '_VS_' + model_name+'_pretrained'] = adv_CKA_mat.tolist()
+    with open(val_path + '/json_summaries.json', 'w+') as j_file:
+        json.dump(json_summaries, j_file)
 
 if __name__ == '__main__':
     main()
