@@ -1,4 +1,4 @@
-from utils_eval import average_q_px_dist_per_head_per_block, freq_hist, get_CKA, get_adversarial_CKA, combine_CKA_and_adv_CKA
+from utils_eval import attn_distance, adv_attn_distance, freq_hist, get_CKA, get_adversarial_CKA, combine_CKA_and_adv_CKA
 from torchvision.utils import save_image
 from collections import OrderedDict
 from contextlib import suppress
@@ -110,8 +110,7 @@ def validate(model, loader, loss_fn, val_path):
     return metrics
 
 
-def validate_attack(model, loader, loss_fn, val_path):
-    epsilonMax = 0.03
+def validate_attack(model, loader, loss_fn, val_path, epsilonMax=0.062):
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
@@ -204,10 +203,10 @@ def main():
         ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
         val_path = val_path + tested_models[args.version] + '_' + args.ckpt
         exp_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt
-    loader = get_val_loader(args.data, batch_size=args.b)
     json_summaries = {}
     if os.path.exists(ckpt_path) or args.p:
         if not os.path.exists(val_path):
+            loader = get_val_loader(args.data, batch_size=360)
             os.mkdir(val_path)
             ckpt_file = ckpt_path + ext
             if args.p and not custom_model:
@@ -217,12 +216,14 @@ def main():
             model = model.cuda()
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
-            att_distances = average_q_px_dist_per_head_per_block(val_path.split('/')[-1], val_path, loader, model)
+            att_distances = attn_distance(val_path.split('/')[-1], val_path, loader, model)
+            adv_att_distances = adv_attn_distance(val_path.split('/')[-1], val_path, loader, model, validate_loss_fn)
             clean_metrics = validate(model, loader, validate_loss_fn, val_path)
             adv_metrics = validate_attack(model, loader, validate_loss_fn, val_path)
             freq_hist(val_path.split('/')[-1], val_path)
 
-            json_summaries['attdistances'] = att_distances.tolist()
+            json_summaries['att_distances'] = att_distances.tolist()
+            json_summaries['adv_att_distances'] = adv_att_distances.tolist()
             json_summaries['clean_metrics'] = clean_metrics
             json_summaries['adv_metrics'] = adv_metrics
 
@@ -235,6 +236,7 @@ def main():
             with open(val_path + '/json_summaries.json', 'r') as j_file:
                 json_summaries = json.load(j_file)
         loss_fn = nn.CrossEntropyLoss().cuda()
+        loader = get_val_loader(args.data, batch_size=args.b)
         ckpt_file = ckpt_path + ext
         if args.p and not custom_model:
             model = timm.create_model(tested_models[args.version], pretrained=True)
@@ -268,8 +270,60 @@ def main():
             combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
             json_summaries[exp_name + '_VS_' + model_name+'_pretrained'] = CKA_mat.tolist()
             json_summaries['adv_' + exp_name + '_VS_' + model_name+'_pretrained'] = adv_CKA_mat.tolist()
-    with open(val_path + '/json_summaries.json', 'w+') as j_file:
-        json.dump(json_summaries, j_file)
+        with open(val_path + '/json_summaries.json', 'w+') as j_file:
+            json.dump(json_summaries, j_file)
+
+
+def test_main():
+    args = parser.parse_args()
+    custom_model = args.ckpt != ''
+    train_path = 'output/train/'
+    val_path = 'output/val/'
+    ext = '/model_best.pth.tar'
+    tested_models = ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224', 'vit_base_patch16_224',
+                     'vit_base_patch32_224']
+    custom_versions = ['doexp5', 'dosq4015']
+    if args.version < 0 or args.version >= len(tested_models):
+        print("Error: Version asked does not exist.")
+        return
+    if args.ckpt == '':
+        ckpt_path = train_path + tested_models[args.version]
+        val_path = val_path + tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
+        exp_name = tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
+    else:
+        ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
+        val_path = val_path + tested_models[args.version] + '_' + args.ckpt
+        exp_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt
+    json_summaries = {}
+    if os.path.exists(ckpt_path) or args.p:
+        if os.path.exists(val_path + '/json_summaries.json'):
+            with open(val_path + '/json_summaries.json', 'r') as j_file:
+                json_summaries = json.load(j_file)
+        loader = get_val_loader(args.data, batch_size=32)
+        ckpt_file = ckpt_path + ext
+        if args.p and not custom_model:
+            model = timm.create_model(tested_models[args.version], pretrained=True)
+        else:
+            model = timm.create_model(
+                'custom_' + tested_models[args.version] if custom_model else tested_models[args.version],
+                checkpoint_path=ckpt_file)
+        model = model.cuda()
+        validate_loss_fn = nn.CrossEntropyLoss().cuda()
+
+        # att_distances = attn_distance(val_path.split('/')[-1], val_path, loader, model)
+        adv_att_distances = adv_attn_distance(val_path.split('/')[-1], val_path, loader, model, validate_loss_fn)
+        # clean_metrics = validate(model, loader, validate_loss_fn, val_path)
+        # adv_metrics = validate_attack(model, loader, validate_loss_fn, val_path)
+        # freq_hist(val_path.split('/')[-1], val_path)
+
+        json_summaries['adv_att_distances'] = adv_att_distances.tolist()
+        # json_summaries['att_distances'] = att_distances.tolist()
+        # json_summaries['clean_metrics'] = clean_metrics
+        # json_summaries['adv_metrics'] = adv_metrics
+        with open(val_path + '/json_summaries.json', 'w+') as j_file:
+            json.dump(json_summaries, j_file)
+
 
 if __name__ == '__main__':
     main()
+    # test_main()

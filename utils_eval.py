@@ -134,7 +134,7 @@ def update_metrics(mod1_hooks, mod2_hooks, metrics, metric_name, it, writer, do_
         writer.add_image(metric_name, sim_mat, it)
 
 
-def average_q_px_dist_per_head_per_block(title, fname, loader, model):
+def attn_distance(title, fname, loader, model):
     def get_features(name):
         def hook(model, input, output):
             qkvs[name] = output.detach()
@@ -149,6 +149,64 @@ def average_q_px_dist_per_head_per_block(title, fname, loader, model):
     qkvs = {}
     for batch_idx, (input, target) in enumerate(loader):
         _ = model(input)
+        for block, qkv in qkvs.items():
+            num_heads, scale = model.blocks[0].attn.num_heads, model.blocks[0].attn.scale
+            B, N, CCC = qkv.shape
+            C = CCC // 3
+            qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
+            q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+            attn = (q @ k.transpose(-2, -1)) * scale
+            attn = attn.softmax(dim=-1)
+            _, H, _, _ = attn.shape
+            attn = attn.permute(1, 0, 2, 3)
+            vect = torch.arange(N).reshape((1, N))
+            dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
+                    (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
+            per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
+                attn, (1, 2, 3))
+            qkvs[block] = per_head_dist_map * patch_size
+        break
+    vals = []
+    for qkv in qkvs.values():
+        vals.append(qkv.cpu().numpy())
+    vals = np.asarray(vals)
+    block_names = [str(i) for i in range(len(vals))]
+    fig, ax = plt.subplots()
+    for head in range(len(vals[0])):
+        ax.scatter(block_names, vals[:, head], label='head_' + str(head))
+    fig.suptitle(title)
+    if len(vals[0]) < 7:
+        ax.legend()
+    ax.set_ylabel('Attention distance in Pixel')
+    ax.set_xlabel('Block id')
+    ax.grid(True, which='both')
+    ax.set_ylim(ymax=180, ymin=0)
+    plt.savefig(fname + '/Attn_dist.png')
+    plt.close()
+    return vals
+
+
+def adv_attn_distance(title, fname, loader, model, loss_fn, epsilonMax=.062):
+    def get_features(name):
+        def hook(model, input, output):
+            qkvs[name] = output.detach()
+
+        return hook
+
+    for block_id, block in enumerate(model.blocks):
+        block.attn.qkv.register_forward_hook(get_features(str(block_id)))
+
+    patch_size = 16 if '16' in title.split('_')[2] else 32
+    model.eval()
+    qkvs = {}
+    for batch_idx, (input, target) in enumerate(loader):
+        input.requires_grad = True
+        output = model(input)
+        cost = loss_fn(output, target)
+        grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+        perturbedImage = input + epsilonMax * grad.sign()
+        perturbedImage = torch.clamp(perturbedImage, -1, 1)
+        _ = model(perturbedImage)
         for block, qkv in qkvs.items():
             num_heads, scale = model.blocks[0].attn.num_heads, model.blocks[0].attn.scale
             B, N, CCC = qkv.shape
@@ -245,7 +303,7 @@ def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader)
     return sim_mat, [model_t_name, model_c_name]
 
 
-def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.03):
+def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062):
     if model_t_name == model_c_name:
         plt_name = 'self Adversarial CKA:\n' + model_t_name
         fig_name = val_path + '/CKA_adv_' + model_t_name + '.png'
