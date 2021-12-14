@@ -223,7 +223,7 @@ def main():
     json_summaries = {}
     if os.path.exists(ckpt_path) or args.p:
         if not os.path.exists(val_path):
-            loader = get_val_loader(args.data, batch_size=200)
+            loader = get_val_loader(args.data, batch_size=128)
             os.mkdir(val_path)
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
