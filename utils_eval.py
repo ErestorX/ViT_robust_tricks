@@ -2,11 +2,13 @@ import os.path
 from collections import OrderedDict
 from torch.utils.tensorboard import SummaryWriter
 from matplotlib.ticker import PercentFormatter
+from models.T2T import load_t2t_vit
 import matplotlib.pyplot as plt
 from torchmetrics import Metric
 from einops import rearrange
 import numpy as np
 import torch
+import timm
 import cv2
 
 
@@ -239,7 +241,7 @@ def adv_attn_distance(title, fname, loader, model, loss_fn, epsilonMax=.062):
     ax.set_xlabel('Block id')
     ax.grid(True, which='both')
     ax.set_ylim(ymax=180, ymin=0)
-    plt.savefig(fname + '/Attn_dist.png')
+    plt.savefig(fname + '/Adv_attn_dist.png')
     plt.close()
     return vals
 
@@ -358,3 +360,18 @@ def combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, exp_name, val_path):
     exp_name = list(OrderedDict.fromkeys(exp_name))
     plt.title("CKA and adversarial CKA difference:\n" + "\n".join(exp_name))
     plt.savefig(val_path + '/diff_CKA_' + '_|_'.join(exp_name) + '.png')
+
+
+def CKA_in_summaries(val_path, model_1, exp_name_1, model_2, exp_name_2, loader, loss_fn, json_summaries, model_2_ckpt_file='', pretrained=False, t2t_vit_mode=False):
+    if t2t_vit_mode:
+        model_2 = load_t2t_vit(model_2, model_2_ckpt_file)
+    elif not pretrained:
+        model_2 = timm.create_model(model_2, checkpoint_path=model_2_ckpt_file)
+    else:
+        model_2 = timm.create_model(model_2, pretrained=True)
+    CKA_mat, name = get_CKA(val_path, model_1, exp_name_1, model_2.cuda(), exp_name_2,  loader)
+    adv_CKA_mat = get_adversarial_CKA(val_path, model_1, exp_name_1, model_2.cuda(), exp_name_2, loader, loss_fn)
+    combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
+    json_summaries[exp_name_1 + '_VS_' + exp_name_2] = CKA_mat.tolist()
+    json_summaries['adv_' + exp_name_1 + '_VS_' + exp_name_2] = adv_CKA_mat.tolist()
+    return json_summaries

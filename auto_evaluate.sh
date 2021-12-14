@@ -1,8 +1,8 @@
 #!/bin/bash
 
-StringVal="doexp5 dosq4015"
+StringVal="doexp5 dosq4015 t p"
 
-for v in {0..4}; do
+for v in {0..6}; do
   for ckpt in $StringVal; do
     python3 Eval_robustness.py --data "$1" --version "$v" --ckpt "$ckpt"
   done
