@@ -197,33 +197,42 @@ def main():
     if args.version < 0 or args.version >= len(tested_models):
         print("Error: Version asked does not exist.")
         return
-    if custom_vit is not None:
-        ckpt_path = train_path + tested_models[args.version] + '_' + custom_vit
-        val_path = val_path + tested_models[args.version] + '_' + custom_vit
-        exp_name = 'custom_' + tested_models[args.version] + '_' + custom_vit
-        model_name = 'custom_' + tested_models[args.version]
-    elif t2t_vit_mode is not None:
-        ckpt_path = train_path + tested_models[args.version] + '_' + t2t_vit_mode
-        val_path = val_path + tested_models[args.version] + '_' + t2t_vit_mode
-        exp_name = tested_models[args.version] + '_' + t2t_vit_mode
-        model_name = tested_models[args.version] + '_' + t2t_vit_mode
+
+    if 't2t' not in tested_models[args.version]:
+        if custom_vit is not None:
+            ckpt_path = train_path + tested_models[args.version] + '_' + custom_vit
+            val_path = val_path + tested_models[args.version] + '_' + custom_vit
+            exp_name = 'custom_' + tested_models[args.version] + '_' + custom_vit
+            model_name = 'custom_' + tested_models[args.version]
+        else:
+            ckpt_path = train_path + tested_models[args.version]
+            val_path = val_path + tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
+            exp_name = tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
+            model_name = tested_models[args.version]
     else:
-        ckpt_path = train_path + tested_models[args.version]
-        val_path = val_path + tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
-        exp_name = tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
-        model_name = tested_models[args.version]
+        if t2t_vit_mode is not None:
+            ckpt_path = train_path + tested_models[args.version] + '_' + t2t_vit_mode
+            val_path = val_path + tested_models[args.version] + '_' + t2t_vit_mode
+            exp_name = tested_models[args.version] + '_' + t2t_vit_mode
+            model_name = tested_models[args.version] + '_' + t2t_vit_mode
+        else:
+            return
+
     ckpt_file = ckpt_path + ext
-    if t2t_vit_mode:
-        model = models.T2T.load_t2t_vit(model_name, ckpt_file)
-    elif not args.p:
-        model = timm.create_model(model_name, checkpoint_path=ckpt_file)
+    if not args.p and not os.path.exists(ckpt_file):
+        return
+    if not args.p:
+        if 't2t' in model_name:
+            model = models.T2T.load_t2t_vit(model_name, ckpt_file)
+        else:
+            model = timm.create_model(model_name, checkpoint_path=ckpt_file)
     else:
         model = timm.create_model(model_name, pretrained=True)
     model = model.cuda()
     json_summaries = {}
     if os.path.exists(ckpt_path) or args.p:
         if not os.path.exists(val_path):
-            loader = get_val_loader(args.data, batch_size=128)
+            loader = get_val_loader(args.data, batch_size=64)
             os.mkdir(val_path)
             validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
@@ -249,22 +258,24 @@ def main():
         loss_fn = nn.CrossEntropyLoss().cuda()
         loader = get_val_loader(args.data, batch_size=args.b)
         for model_name in tested_models:
-            for version in custom_vit_versions:
-                ckpt_file = train_path + model_name + '_' + version + ext
+            if 't2t' not in model_name:
+                for version in custom_vit_versions:
+                    ckpt_file = train_path + model_name + '_' + version + ext
+                    if os.path.exists(ckpt_file):
+                        json_summaries = CKA_in_summaries(val_path, model, exp_name, 'custom_' + model_name, 'custom_' + model_name+'_'+version, loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
+                ckpt_file = train_path + model_name + ext
                 if os.path.exists(ckpt_file):
-                    json_summaries = CKA_in_summaries(val_path, model, exp_name, 'custom_' + model_name, 'custom_' + model_name+'_'+version, loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
-            for version in t2t_versions:
-                ckpt_file = train_path + model_name + '_' + version + ext
-                if os.path.exists(ckpt_file):
-                    json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name + '_' + version, model_name + '_' + version, loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
-            ckpt_file = train_path + model_name + ext
-            if os.path.exists(ckpt_file):
-                json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name, model_name + '_scratch', loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
-            json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name, model_name + '_pretrained', loader, loss_fn, json_summaries, pretrained=True)
+                    json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name, model_name + '_scratch', loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
+                json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name, model_name + '_pretrained', loader, loss_fn, json_summaries, pretrained=True)
+            else:
+                for version in t2t_versions:
+                    ckpt_file = train_path + model_name + '_' + version + ext
+                    if os.path.exists(ckpt_file):
+                        json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name + '_' + version, model_name + '_' + version, loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
         with open(val_path + '/json_summaries.json', 'w+') as j_file:
             json.dump(json_summaries, j_file)
 
 
 if __name__ == '__main__':
-    torch.cuda.set_device(1)
+    torch.cuda.set_device(5)
     main()

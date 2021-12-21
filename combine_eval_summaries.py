@@ -29,20 +29,6 @@ def order_exp(val_path, exp_list):
     return exp_list
 
 
-def summarize_experiments(val_path, exp_list):
-    exp_results = [['Exp', 'Data', 'Loss', 'Acc@1', 'Acc@5']]
-    for exp in exp_list:
-        with open(val_path + exp + '/Validation.csv', newline='') as csvfile:
-            reader = csv.reader(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            for row_id, row in enumerate(reader):
-                if row_id > 0:
-                    exp_results.append([exp] + row)
-    with open(val_path + 'Experiment_summary.csv', 'w+', newline='') as csvfile:
-        writer = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        for row in exp_results:
-            writer.writerow(row)
-
-
 def summarize_visualization(val_path, exp_list, file):
     models_list = ['_'.join(model.split('_')[:4]) for model in exp_list]
     models_list = sorted(list(set(models_list)))
@@ -124,81 +110,74 @@ def summarize_CKA_diff(val_path, exp_list):
             new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
     new_im.save(val_path + 'Summary_CKA_diff.png')
 
-def new_summarize_CKAs(val_path, exp_list):
+
+def new_summarize_CKAs(val_path, data):
+    exp_list = list(data.keys())
+    final_exp_list = exp_list.copy()
+    for exp_origin in exp_list:
+        for exp_target in exp_list:
+            if exp_target not in data[exp_origin]['CKA']:
+                final_exp_list.remove(exp_target)
+
+
+    # fig_CKA = plt.figure()
+    # fig_adv_CKA = plt.figure()
+    # fig_diff_CKA = plt.figure()
+    # for i, exp_i in enumerate(exp_list):
+    #     for j, exp_j in enumerate(exp_list):
+    #         id_ax = 1 + i*len(exp_list) + j
+    #         ax_CKA = fig_CKA.add_subplot(len(exp_list), len(exp_list), id_ax)
+    #         ax_CKA.imshow(total_summary[exp_i][exp_i+'_VS_'+exp_j])
+
+
+def combine_jsons(val_path, exp_list):
     total_summary = {}
     for exp in exp_list:
         with open(val_path + '/' + exp + '/json_summaries.json') as j_file:
             total_summary[exp] = json.load(j_file)
-    fig_CKA = plt.figure()
-    fig_adv_CKA = plt.figure()
-    fig_diff_CKA = plt.figure()
-    for i, exp_i in enumerate(exp_list):
-        for j, exp_j in enumerate(exp_list):
-            id_ax = 1 + i*len(exp_list) + j
-            ax_CKA = fig_CKA.add_subplot(len(exp_list), len(exp_list), id_ax)
-            ax_CKA.imshow(total_summary[exp_i][exp_i+'_VS_'+exp_j])
-            ax_adv_CKA = fig_adv_CKA.add_subplot(len(exp_list), len(exp_list), id_ax)
-            ax_adv_CKA.imshow(total_summary[exp_i]['adv_'+exp_i + '_VS_' + exp_j])
-            ax_diff_CKA = fig_diff_CKA.add_subplot(len(exp_list), len(exp_list), id_ax)
-            ax_diff_CKA.imshow(total_summary[exp_i][exp_i+'_VS_'+exp_j] - total_summary[exp_i]['adv_'+exp_i + '_VS_' + exp_j])
-
-
-
-def test_main():
-    args = parser.parse_args()
-    exp_list = [exp for exp in os.listdir(args.val_path) if os.path.isdir(args.val_path + exp)]
-    ordered_exp_list = order_exp(args.val_path, exp_list)
-    full_exp_name = ['custom_' + name if name.split('_')[-1] not in ['pretrained', 'scratch'] else name for name in
-                     ordered_exp_list]
-    total_summary = {}
-    for exp in exp_list:
-        with open(args.val_path + exp + '/json_summaries.json') as j_file:
-            total_summary[exp] = json.load(j_file)
-    clean_top1 = []
-    adv_top1 = []
-    clean_dist = []
-    adv_dist = []
-    for exp in ordered_exp_list:
-        clean_top1.append(total_summary[exp]['clean_metrics']['top1'])
-        adv_top1.append(total_summary[exp]['adv_metrics']['top1'])
-        clean_dist.append(np.average(np.asarray(total_summary[exp]['att_distances']), axis=1))
-        adv_dist.append(np.average(np.asarray(total_summary[exp]['adv_att_distances']), axis=1))
-    clean_dist, adv_dist = np.asarray(clean_dist), np.asarray(adv_dist)
-    fig, axes = plt.subplots(1, len(clean_dist[0]), figsize=(48, 4), dpi=200)
-    for block_id in range(len(clean_dist[0])):
-        for model_id, c, exp in zip(range(len(clean_top1)), cm.rainbow(np.linspace(0, 1, len(clean_top1))), ordered_exp_list):
-            axes[block_id].scatter(clean_dist[model_id, block_id], clean_top1[model_id], label=exp, c=c, marker="o")
-            axes[block_id].scatter(adv_dist[model_id, block_id], adv_top1[model_id], c=c, marker="D")
-        axes[block_id].set_ylim(ymax=100, ymin=0)
-        axes[block_id].set_xlim(xmax=160, xmin=60)
-    axLine, axLabel = axes[0].get_legend_handles_labels()
-    fig.legend(axLine, axLabel, loc='center left')
-    plt.show()
-
-    fig, ax = plt.subplots()
-    diff_dist = adv_dist - clean_dist
-    block_names = [str(i) for i in range(len(diff_dist[0]))]
-    for model_id, c, exp in zip(range(len(clean_top1)), cm.rainbow(np.linspace(0, 1, len(clean_top1))), ordered_exp_list):
-        ax.scatter(block_names, diff_dist[model_id, :], c=c, label=exp)
-    ax.set_ylabel('Difference of attention distance')
-    ax.set_xlabel('Block id')
-    axLine, axLabel = ax.get_legend_handles_labels()
-    fig.legend(axLine, axLabel, loc='lower right')
-    plt.show()
+    for summary in total_summary:
+        total_summary[summary]['AttDist_cln'] = total_summary[summary].pop('att_distances')
+        total_summary[summary]['AttDist_adv'] = total_summary[summary].pop('adv_att_distances')
+        total_summary[summary]['Metrics_cln'] = total_summary[summary].pop('clean_metrics')
+        total_summary[summary]['Metrics_adv'] = total_summary[summary].pop('adv_metrics')
+        total_summary[summary]['CKA_cln'] = {}
+        total_summary[summary]['CKA_adv'] = {}
+        keys = list(total_summary[summary].keys())
+        for key in keys:
+            if summary in key:
+                CKA_name = ''.join(key.split('_VS_'))
+                CKA_name = CKA_name.split(summary)
+                for id, val in enumerate(CKA_name):
+                    if 'custom_' in val:
+                        CKA_name[id] = ''.join(val.split('custom_'))
+                if CKA_name[0] == 'adv_':
+                    if CKA_name[1] == '':
+                        total_summary[summary]['CKA_adv'][summary] = total_summary[summary].pop(key)
+                    else:
+                        total_summary[summary]['CKA_adv'][CKA_name[1]] = total_summary[summary].pop(key)
+                else:
+                    if CKA_name[1] == '':
+                        total_summary[summary]['CKA_cln'][summary] = total_summary[summary].pop(key)
+                    else:
+                        total_summary[summary]['CKA_cln'][CKA_name[1]] = total_summary[summary].pop(key)
+    json.dump(total_summary, open(val_path + '/json_summaries_combined.json', 'w+'))
+    return total_summary
 
 
 def main():
     args = parser.parse_args()
     exp_list = [exp for exp in os.listdir(args.val_path) if os.path.isdir(args.val_path + exp)]
-    summarize_experiments(args.val_path, exp_list)
-    for file in os.listdir(args.val_path + exp_list[0]):
-        if file.split('.')[-1] == 'png' and 'CKA' not in file:
-            summarize_visualization(args.val_path, exp_list, file)
-    summarize_CKA(args.val_path, exp_list)
-    summarize_adversarial_CKA(args.val_path, exp_list)
-    summarize_CKA_diff(args.val_path, exp_list)
+    exp_list = order_exp(args.val_path, exp_list)
+    data = combine_jsons(args.val_path, exp_list)
+    # exp_list = list(data.keys())
+    # for file in os.listdir(args.val_path + exp_list[0]):
+    #     if file.split('.')[-1] == 'png' and 'CKA' not in file:
+    #         summarize_visualization(args.val_path, exp_list, file)
+    new_summarize_CKAs(args.val_path, data)
+    # summarize_CKA(args.val_path, exp_list)
+    # summarize_adversarial_CKA(args.val_path, exp_list)
+    # summarize_CKA_diff(args.val_path, exp_list)
 
 
 if __name__ == '__main__':
     main()
-    # test_main()

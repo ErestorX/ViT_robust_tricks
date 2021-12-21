@@ -362,8 +362,8 @@ def combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, exp_name, val_path):
     plt.savefig(val_path + '/diff_CKA_' + '_|_'.join(exp_name) + '.png')
 
 
-def CKA_in_summaries(val_path, model_1, exp_name_1, model_2, exp_name_2, loader, loss_fn, json_summaries, model_2_ckpt_file='', pretrained=False, t2t_vit_mode=False):
-    if t2t_vit_mode:
+def CKA_in_summaries(val_path, model_1, exp_name_1, model_2, exp_name_2, loader, loss_fn, json_summaries, model_2_ckpt_file='', pretrained=False):
+    if 't2t' in model_2:
         model_2 = load_t2t_vit(model_2, model_2_ckpt_file)
     elif not pretrained:
         model_2 = timm.create_model(model_2, checkpoint_path=model_2_ckpt_file)
@@ -371,6 +371,8 @@ def CKA_in_summaries(val_path, model_1, exp_name_1, model_2, exp_name_2, loader,
         model_2 = timm.create_model(model_2, pretrained=True)
     CKA_mat, name = get_CKA(val_path, model_1, exp_name_1, model_2.cuda(), exp_name_2,  loader)
     adv_CKA_mat = get_adversarial_CKA(val_path, model_1, exp_name_1, model_2.cuda(), exp_name_2, loader, loss_fn)
+    if CKA_mat is None or adv_CKA_mat is None:
+        return json_summaries
     combine_CKA_and_adv_CKA(CKA_mat, adv_CKA_mat, name, val_path)
     json_summaries[exp_name_1 + '_VS_' + exp_name_2] = CKA_mat.tolist()
     json_summaries['adv_' + exp_name_1 + '_VS_' + exp_name_2] = adv_CKA_mat.tolist()
