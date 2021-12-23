@@ -8,6 +8,7 @@ import argparse
 import csv
 import os
 
+import models.T2T
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--val_path', default='./output/val/', type=str)
@@ -52,82 +53,43 @@ def summarize_visualization(val_path, exp_list, file):
     new_im.save(val_path + 'Summary_' + file)
 
 
-def summarize_CKA(val_path, exp_list):
-    folder_list = order_exp(val_path, exp_list)
-    full_exp_name = ['custom_' + name if name.split('_')[-1] not in ['pretrained', 'scratch'] else name for name in folder_list]
-    new_im, total_width, total_height = None, None, None
-    for col_id, (folder_origin, exp_origin) in enumerate(zip(folder_list, full_exp_name)):
-        for row_id, exp_target in enumerate(full_exp_name):
-            if row_id < col_id:
-                continue
-            if exp_origin == exp_target:
-                file_name = val_path + folder_origin + '/CKA_' + exp_origin + '.png'
-            else:
-                file_name = val_path + folder_origin + '/CKA_' + exp_origin + '_|_' + exp_target + '.png'
-            im = Image.open(file_name).convert('RGB')
-            if new_im is None:
-                total_width = np.asarray(im).shape[1] * len(folder_list)
-                total_height = np.asarray(im).shape[0] * len(folder_list)
-                new_im = Image.new('RGB', (total_width, total_height))
-                new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-            new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-    new_im.save(val_path + 'Summary_CKA.png')
+def summarize_dists(val_path, data):
+
+    pass
 
 
-def summarize_adversarial_CKA(val_path, exp_list):
-    folder_list = order_exp(val_path, exp_list)
-    full_exp_name = ['custom_' + name if name.split('_')[-1] not in ['pretrained', 'scratch'] else name for name in folder_list]
-    new_im, total_width, total_height = None, None, None
-    for col_id, (folder_origin, exp_origin) in enumerate(zip(folder_list, full_exp_name)):
-        for row_id, exp_target in enumerate(full_exp_name):
-            if exp_origin == exp_target:
-                file_name = val_path + folder_origin + '/CKA_adv_' + exp_origin + '.png'
-            else:
-                file_name = val_path + folder_origin + '/CKA_adv_' + exp_origin + '_|_' + exp_target + '.png'
-            im = Image.open(file_name).convert('RGB')
-            if new_im is None:
-                total_width = np.asarray(im).shape[1] * len(folder_list)
-                total_height = np.asarray(im).shape[0] * len(folder_list)
-                new_im = Image.new('RGB', (total_width, total_height))
-                new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-            new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-    new_im.save(val_path + 'Summary_adversarial_CKA.png')
-
-
-def summarize_CKA_diff(val_path, exp_list):
-    folder_list = order_exp(val_path, exp_list)
-    full_exp_name = ['custom_' + name if name.split('_')[-1] not in ['pretrained', 'scratch'] else name for name in folder_list]
-    new_im, total_width, total_height = None, None, None
-    for col_id, (folder_origin, exp_origin) in enumerate(zip(folder_list, full_exp_name)):
-        for row_id, exp_target in enumerate(full_exp_name):
-            file_name = val_path + folder_origin + '/diff_CKA_' + exp_origin + '_|_' + exp_target + '.png'
-            im = Image.open(file_name).convert('RGB')
-            if new_im is None:
-                total_width = np.asarray(im).shape[1] * len(folder_list)
-                total_height = np.asarray(im).shape[0] * len(folder_list)
-                new_im = Image.new('RGB', (total_width, total_height))
-                new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-            new_im.paste(im, (col_id * np.asarray(im).shape[1], row_id * np.asarray(im).shape[0]))
-    new_im.save(val_path + 'Summary_CKA_diff.png')
-
-
-def new_summarize_CKAs(val_path, data):
-    exp_list = list(data.keys())
+def summarize_CKAs(val_path, data, exp_code='CKA_cln'):
+    # exp_list = list(data.keys())
+    exp_list = ['t2t_vit_14_p', 't2t_vit_14_t', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
+                'vit_base_patch32_224_scratch', 'vit_small_patch16_224_pretrained', 'vit_small_patch32_224_pretrained',
+                'vit_tiny_patch16_224_pretrained', 'vit_tiny_patch16_224_scratch']
     final_exp_list = exp_list.copy()
-    for exp_origin in exp_list:
-        for exp_target in exp_list:
-            if exp_target not in data[exp_origin]['CKA']:
-                final_exp_list.remove(exp_target)
-
-
-    # fig_CKA = plt.figure()
-    # fig_adv_CKA = plt.figure()
-    # fig_diff_CKA = plt.figure()
-    # for i, exp_i in enumerate(exp_list):
-    #     for j, exp_j in enumerate(exp_list):
-    #         id_ax = 1 + i*len(exp_list) + j
-    #         ax_CKA = fig_CKA.add_subplot(len(exp_list), len(exp_list), id_ax)
-    #         ax_CKA.imshow(total_summary[exp_i][exp_i+'_VS_'+exp_j])
+    nb_exp = len(final_exp_list)
+    arg_min, arg_max = 1e99, -1e99
+    mat_results = []
+    for id_i, i in enumerate(final_exp_list):
+        for id_j, j in enumerate(final_exp_list):
+            if j not in data[i][exp_code]:
+                tmp_mat = np.zeros((1, 1)) * 0.5
+            else:
+                tmp_mat = np.asarray(data[i][exp_code][j])
+            mat_results.append(tmp_mat)
+            arg_min = np.amin(tmp_mat) if np.amin(tmp_mat) < arg_min else arg_min
+            arg_max = np.amax(tmp_mat) if np.amax(tmp_mat) > arg_max else arg_max
+    for id_i in range(nb_exp ** 2):
+        mat_results[id_i] = (mat_results[id_i] - arg_min) / (arg_max - arg_min)
+    fig = plt.figure(figsize=(35, 35))
+    for id_i in range(nb_exp ** 2):
+        ax_CKA = fig.add_subplot(nb_exp, nb_exp, id_i + 1)
+        ax_CKA.imshow(mat_results[id_i])
+        if id_i // nb_exp == 0:
+            ax_CKA.set_title(final_exp_list[int(id_i % nb_exp)])
+        if id_i % nb_exp == 0:
+            ax_CKA.set_ylabel(final_exp_list[int(id_i / nb_exp)])
+        plt.setp(ax_CKA, xticks=range(0, len(mat_results[id_i]), 5), yticks=range(0, len(mat_results[id_i][0]), 5))
+    fig.tight_layout()
+    plt.savefig(val_path + 'Summary_' + exp_code + '.png')
+    return mat_results, final_exp_list
 
 
 def combine_jsons(val_path, exp_list):
@@ -160,7 +122,7 @@ def combine_jsons(val_path, exp_list):
                         total_summary[summary]['CKA_cln'][summary] = total_summary[summary].pop(key)
                     else:
                         total_summary[summary]['CKA_cln'][CKA_name[1]] = total_summary[summary].pop(key)
-    json.dump(total_summary, open(val_path + '/json_summaries_combined.json', 'w+'))
+    json.dump(total_summary, open(val_path + '/all_summaries.json', 'w+'))
     return total_summary
 
 
@@ -169,13 +131,23 @@ def main():
     exp_list = [exp for exp in os.listdir(args.val_path) if os.path.isdir(args.val_path + exp)]
     exp_list = order_exp(args.val_path, exp_list)
     data = combine_jsons(args.val_path, exp_list)
-    # exp_list = list(data.keys())
-    # for file in os.listdir(args.val_path + exp_list[0]):
-    #     if file.split('.')[-1] == 'png' and 'CKA' not in file:
-    #         summarize_visualization(args.val_path, exp_list, file)
-    new_summarize_CKAs(args.val_path, data)
-    # summarize_CKA(args.val_path, exp_list)
-    # summarize_adversarial_CKA(args.val_path, exp_list)
+    result_cln, final_exp_list = summarize_CKAs(args.val_path, data, 'CKA_cln')
+    result_adv, _ = summarize_CKAs(args.val_path, data, 'CKA_adv')
+    nb_exp = len(final_exp_list)
+    fig = plt.figure(figsize=(35, 35))
+    mat_results = []
+    for adv, cln in zip(result_adv, result_cln):
+        mat_results.append(adv - cln)
+    for id_i in range(nb_exp ** 2):
+        ax_CKA = fig.add_subplot(nb_exp, nb_exp, id_i + 1)
+        ax_CKA.imshow(mat_results[id_i])
+        if id_i // nb_exp == 0:
+            ax_CKA.set_title(final_exp_list[int(id_i % nb_exp)])
+        if id_i % nb_exp == 0:
+            ax_CKA.set_ylabel(final_exp_list[int(id_i / nb_exp)])
+        plt.setp(ax_CKA, xticks=range(0, len(mat_results[id_i]), 5), yticks=range(0, len(mat_results[id_i][0]), 5))
+    fig.tight_layout()
+    plt.savefig(args.val_path + 'Summary_CKA_dif.png')
     # summarize_CKA_diff(args.val_path, exp_list)
 
 

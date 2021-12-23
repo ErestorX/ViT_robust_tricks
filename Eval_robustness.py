@@ -44,7 +44,9 @@ def get_val_loader(data_path, batch_size=64):
     return loader_eval
 
 
-def validate(model, loader, loss_fn, val_path):
+def validate(model, loader, loss_fn, val_path, summary):
+    if 'Metrics_cln' in summary.keys():
+        return summary['Metrics_cln']
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
@@ -104,13 +106,15 @@ def validate(model, loader, loss_fn, val_path):
                 print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
                                                                            batch_time=batch_time_m, top1=top1_m))
 
-    metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+    summary['Metrics_cln'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
     save_image((cleanImage[:16] + 1) / 2, val_path + '/clean_batch.png')
 
-    return metrics
+    return summary['Metrics_cln']
 
 
-def validate_attack(model, loader, loss_fn, val_path, epsilonMax=0.062):
+def validate_attack(model, loader, loss_fn, val_path, summary, epsilonMax=0.062):
+    if 'Metrics_adv' in summary.keys():
+        return summary['Metrics_adv']
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
@@ -176,11 +180,11 @@ def validate_attack(model, loader, loss_fn, val_path, epsilonMax=0.062):
             print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
                                                                        batch_time=batch_time_m, top1=top1_m))
 
-    metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+    summary['Metrics_adv'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
     save_image((perturbedImage[:16] + 1) / 2, val_path + '/adv_batch.png')
     save_image(perturbationVal[:16], val_path + '/perturb_batch.png')
 
-    return metrics
+    return summary['Metrics_adv']
 
 
 def main():
@@ -188,73 +192,66 @@ def main():
                      'vit_base_patch32_224', 't2t_vit_14']
     custom_vit_versions = ['doexp5', 'dosq4015']
     t2t_versions = ['t', 'p']
-    args = parser.parse_args()
-    custom_vit = args.ckpt if args.ckpt in custom_vit_versions else None
-    t2t_vit_mode = args.ckpt if args.ckpt in t2t_versions else None
     train_path = 'output/train/'
     val_path = 'output/val/'
     ext = '/model_best.pth.tar'
+    args = parser.parse_args()
+    if os.path.exists(args.val_path + 'all_summaries.json'):
+        json_file = open(args.val_path + 'all_summaries.json', 'r')
+        all_summaries = json.load(json_file)
+    else:
+        json_file = open(args.val_path + 'all_summaries.json', 'w+')
+        all_summaries = {}
     if args.version < 0 or args.version >= len(tested_models):
         print("Error: Version asked does not exist.")
         return
 
     if 't2t' not in tested_models[args.version]:
-        if custom_vit is not None:
-            ckpt_path = train_path + tested_models[args.version] + '_' + custom_vit
-            val_path = val_path + tested_models[args.version] + '_' + custom_vit
-            exp_name = 'custom_' + tested_models[args.version] + '_' + custom_vit
+        if args.ckpt in custom_vit_versions:
+            ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
+            val_path = val_path + tested_models[args.version] + '_' + args.ckpt
+            exp_name = tested_models[args.version] + '_' + args.ckpt
             model_name = 'custom_' + tested_models[args.version]
         else:
             ckpt_path = train_path + tested_models[args.version]
             val_path = val_path + tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
             exp_name = tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
             model_name = tested_models[args.version]
+    elif args.ckpt in t2t_versions:
+        ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
+        val_path = val_path + tested_models[args.version] + '_' + args.ckpt
+        exp_name = tested_models[args.version] + '_' + args.ckpt
+        model_name = tested_models[args.version] + '_' + args.ckpt
     else:
-        if t2t_vit_mode is not None:
-            ckpt_path = train_path + tested_models[args.version] + '_' + t2t_vit_mode
-            val_path = val_path + tested_models[args.version] + '_' + t2t_vit_mode
-            exp_name = tested_models[args.version] + '_' + t2t_vit_mode
-            model_name = tested_models[args.version] + '_' + t2t_vit_mode
-        else:
-            return
+        return
 
     ckpt_file = ckpt_path + ext
     if not args.p and not os.path.exists(ckpt_file):
         return
-    if not args.p:
-        if 't2t' in model_name:
-            model = models.T2T.load_t2t_vit(model_name, ckpt_file)
+    if 't2t' not in model_name:
+        if args.p:
+            model = timm.create_model(model_name, pretrained=True)
         else:
             model = timm.create_model(model_name, checkpoint_path=ckpt_file)
     else:
-        model = timm.create_model(model_name, pretrained=True)
+        model = models.T2T.load_t2t_vit(model_name, ckpt_file)
     model = model.cuda()
-    json_summaries = {}
+    all_summaries[exp_name] = {}
     if os.path.exists(ckpt_path) or args.p:
-        if not os.path.exists(val_path):
-            loader = get_val_loader(args.data, batch_size=64)
-            os.mkdir(val_path)
-            validate_loss_fn = nn.CrossEntropyLoss().cuda()
+        loader = get_val_loader(args.data, batch_size=64)
+        os.mkdir(val_path)
+        validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
-            att_distances = attn_distance(val_path.split('/')[-1], val_path, loader, model)
-            adv_att_distances = adv_attn_distance(val_path.split('/')[-1], val_path, loader, model, validate_loss_fn)
-            clean_metrics = validate(model, loader, validate_loss_fn, val_path)
-            adv_metrics = validate_attack(model, loader, validate_loss_fn, val_path)
-            freq_hist(val_path.split('/')[-1], val_path)
+        attn_distance(val_path.split('/')[-1], val_path, loader, model, all_summaries[exp_name])
+        json.dump(all_summaries, json_file)
+        adv_attn_distance(val_path.split('/')[-1], val_path, loader, model, validate_loss_fn, all_summaries[exp_name])
+        json.dump(all_summaries, json_file)
+        validate(model, loader, validate_loss_fn, val_path, all_summaries[exp_name])
+        json.dump(all_summaries, json_file)
+        validate_attack(model, loader, validate_loss_fn, val_path, all_summaries[exp_name])
+        json.dump(all_summaries, json_file)
+        freq_hist(val_path.split('/')[-1], val_path)
 
-            json_summaries['att_distances'] = att_distances.tolist()
-            json_summaries['adv_att_distances'] = adv_att_distances.tolist()
-            json_summaries['clean_metrics'] = clean_metrics
-            json_summaries['adv_metrics'] = adv_metrics
-
-            with open(val_path + '/Validation.csv', 'w+', newline='') as csvfile:
-                writer = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-                writer.writerow(['Data', 'Loss', 'Acc@1', 'Acc@5'])
-                writer.writerow(['Clean', clean_metrics['loss'], clean_metrics['top1'], clean_metrics['top5']])
-                writer.writerow(['Adv', adv_metrics['loss'], adv_metrics['top1'], adv_metrics['top5']])
-        else:
-            with open(val_path + '/json_summaries.json', 'r') as j_file:
-                json_summaries = json.load(j_file)
         loss_fn = nn.CrossEntropyLoss().cuda()
         loader = get_val_loader(args.data, batch_size=args.b)
         for model_name in tested_models:

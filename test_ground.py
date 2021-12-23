@@ -1,12 +1,13 @@
 import combine_eval_summaries
 import numpy as np
 import random
+import models
 import copy
 import json
 
 
 def func_1(exp_name):
-    data = json.load(open('output/val/json_summaries_combined.json', 'r'))
+    data = json.load(open('output/val/all_summaries.json', 'r'))
     list_exp = combine_eval_summaries.order_exp('output/val/', data.keys())
     mat = []
     for id_base, exp_base in enumerate(list_exp):

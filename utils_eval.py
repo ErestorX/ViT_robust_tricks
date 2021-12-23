@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from torchmetrics import Metric
 from einops import rearrange
 import numpy as np
+import copy
 import torch
 import timm
 import cv2
@@ -136,7 +137,9 @@ def update_metrics(mod1_hooks, mod2_hooks, metrics, metric_name, it, writer, do_
         writer.add_image(metric_name, sim_mat, it)
 
 
-def attn_distance(title, fname, loader, model):
+def attn_distance(title, fname, loader, model, summary):
+    if 'AttDist_cln' in summary.keys():
+        return summary['AttDist_cln']
     def get_features(name):
         def hook(model, input, output):
             qkvs[name] = output.detach()
@@ -146,7 +149,7 @@ def attn_distance(title, fname, loader, model):
     for block_id, block in enumerate(model.blocks):
         block.attn.qkv.register_forward_hook(get_features(str(block_id)))
 
-    patch_size = 16 if '16' in title.split('_')[2] else 32
+    patch_size = 32 if '32' in title.split('_')[2] else 16
     model.eval()
     qkvs = {}
     for batch_idx, (input, target) in enumerate(loader):
@@ -170,7 +173,8 @@ def attn_distance(title, fname, loader, model):
         break
     vals = []
     for qkv in qkvs.values():
-        vals.append(qkv.cpu().numpy())
+        vals.append(qkv.cpu().numpy().tolist())
+    summary['AttDist_cln'] = vals
     vals = np.asarray(vals)
     block_names = [str(i) for i in range(len(vals))]
     fig, ax = plt.subplots()
@@ -185,10 +189,12 @@ def attn_distance(title, fname, loader, model):
     ax.set_ylim(ymax=180, ymin=0)
     plt.savefig(fname + '/Attn_dist.png')
     plt.close()
-    return vals
+    return summary['AttDist_cln']
 
 
-def adv_attn_distance(title, fname, loader, model, loss_fn, epsilonMax=.062):
+def adv_attn_distance(title, fname, loader, model, loss_fn, summary, epsilonMax=.062):
+    if 'AttDist_adv' in summary.keys():
+        return summary['AttDist_adv']
     def get_features(name):
         def hook(model, input, output):
             qkvs[name] = output.detach()
@@ -198,7 +204,7 @@ def adv_attn_distance(title, fname, loader, model, loss_fn, epsilonMax=.062):
     for block_id, block in enumerate(model.blocks):
         block.attn.qkv.register_forward_hook(get_features(str(block_id)))
 
-    patch_size = 16 if '16' in title.split('_')[2] else 32
+    patch_size = 32 if '32' in title.split('_')[2] else 16
     model.eval()
     qkvs = {}
     for batch_idx, (input, target) in enumerate(loader):
@@ -228,7 +234,8 @@ def adv_attn_distance(title, fname, loader, model, loss_fn, epsilonMax=.062):
         break
     vals = []
     for qkv in qkvs.values():
-        vals.append(qkv.cpu().numpy())
+        vals.append(qkv.cpu().numpy().tolist())
+    summary['AttDist_adv'] = vals
     vals = np.asarray(vals)
     block_names = [str(i) for i in range(len(vals))]
     fig, ax = plt.subplots()
@@ -243,7 +250,7 @@ def adv_attn_distance(title, fname, loader, model, loss_fn, epsilonMax=.062):
     ax.set_ylim(ymax=180, ymin=0)
     plt.savefig(fname + '/Adv_attn_dist.png')
     plt.close()
-    return vals
+    return summary['AttDist_adv']
 
 
 def freq_hist(title, val_path):
@@ -305,13 +312,13 @@ def get_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader)
     return sim_mat, [model_t_name, model_c_name]
 
 
-def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062):
+def get_transfer_CKA(val_path, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062):
     if model_t_name == model_c_name:
-        plt_name = 'self Adversarial CKA:\n' + model_t_name
-        fig_name = val_path + '/CKA_adv_' + model_t_name + '.png'
+        plt_name = 'self Transfer CKA:\n' + model_t_name
+        fig_name = val_path + '/CKA_trf_' + model_t_name + '.png'
     else:
-        plt_name = 'Adversarial CKA:\n' + model_t_name + '\n' + model_c_name
-        fig_name = val_path + '/CKA_adv_' + model_t_name + '_|_' + model_c_name + '.png'
+        plt_name = 'Transfer CKA:\n' + model_t_name + '\n' + model_c_name
+        fig_name = val_path + '/CKA_trf_' + model_t_name + '_|_' + model_c_name + '.png'
     if os.path.exists(fig_name):
         return None, [model_t_name, model_c_name]
     writer = SummaryWriter()
@@ -339,6 +346,50 @@ def get_adversarial_CKA(val_path, model_t, model_t_name, model_c, model_c_name, 
         perturbedImage = input + epsilonMax * grad.sign()
         perturbedImage = torch.clamp(perturbedImage, -1, 1)
         _ = model_t(perturbedImage)
+        update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
+        for hook0 in modc_hooks:
+            for hook1 in modt_hooks:
+                hook0.clear()
+                hook1.clear()
+
+    sim_mat = get_simmat_from_metrics(metrics_ct)
+    plt.imshow(sim_mat)
+    plt.title(plt_name)
+    plt.savefig(fig_name)
+    return sim_mat
+
+
+def get_adversarial_CKA(val_path, model_t, model_name, data_loader, loss_fn, epsilonMax=0.062):
+    model_c = copy.deepcopy(model_t)
+    plt_name = 'self Adversarial CKA:\n' + model_name
+    fig_name = val_path + '/CKA_adv_' + model_name + '.png'
+    if os.path.exists(fig_name):
+        return None, [model_name]
+    writer = SummaryWriter()
+
+    modc_hooks = []
+    for j, block in enumerate(model_c.blocks):
+        tgt = f'blocks.{j}'
+        hook = HookedCache(model_c, tgt)
+        modc_hooks.append(hook)
+
+    modt_hooks = []
+    for j, block in enumerate(model_t.blocks):
+        tgt = f'blocks.{j}'
+        hook = HookedCache(model_t, tgt)
+        modt_hooks.append(hook)
+    metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
+
+    for it, (input, target) in enumerate(data_loader):
+        do_log = (it % 10 == 0)
+        _ = model_t(input)
+        input.requires_grad = True
+        output = model_t(input)
+        cost = loss_fn(output, target)
+        grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+        perturbedImage = input + epsilonMax * grad.sign()
+        perturbedImage = torch.clamp(perturbedImage, -1, 1)
+        _ = model_c(perturbedImage)
         update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
         for hook0 in modc_hooks:
             for hook1 in modt_hooks:
