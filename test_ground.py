@@ -19,21 +19,6 @@ def func_1(exp_name):
         # mat = np.asarray(mat)
 
 
-def func2():
-    list_of_individual = ['Hugo', 'Linh', 'Koki', 'Tomomi', 'Aria', 'Sy', 'Ferin', 'Rizaldi', 'Luca', 'Tianwei', 'Fan', 'Fan_s fiend',
-            'Ozgur', 'Jimmy']
-    pairs = []
-    copy_list = list_of_individual.copy()
-    for id in range(len(list_of_individual)):
-        rand_id = id
-        while rand_id == id:
-            rand_id = random.randint(0, len(copy_list) - 1)
-            if list_of_individual[id] != copy_list[rand_id]:
-                pairs.append([list_of_individual[id], copy_list[rand_id]])
-                copy_list.pop(rand_id)
-    return pairs
-
-
 def func_3():
     nb_reviewer = 2
     dict_schedule = {}
@@ -78,4 +63,4 @@ def func_3():
 
 
 if __name__ == '__main__':
-    func_3()
+    pass

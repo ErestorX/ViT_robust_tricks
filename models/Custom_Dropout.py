@@ -4,11 +4,11 @@ from torch.nn import functional as F
 from torch import Tensor
 
 
-def probability_from_long_distance_relation(attn, mode='exp', bin_do_val=0.15, threshold=4):
+def probability_from_long_distance_relation(attn, mode='exp', bin_do_val=0.15, threshold=4, layer=10):
     def distance2proba(per_head_avg_distance, N):
         if mode == 'exp':
             proba = per_head_avg_distance/(N ** 0.5)
-            proba = .5/torch.exp(5*proba)
+            proba = .5/torch.exp(.5*layer*proba)
         elif mode == 'square':
             proba = per_head_avg_distance / (N ** 0.5)
             proba[proba <= threshold] = 0
@@ -39,13 +39,14 @@ class _DropoutNd(Module):
 
 
 class CustomDropout(_DropoutNd):
-    def __init__(self, mode='exp', threshold=4):
+    def __init__(self, mode='exp', threshold=4, layer=10):
         super().__init__()
         self.threshold = threshold
         self.mode = mode
+        self.layer = layer
 
     def forward(self, input: Tensor, attn: Tensor) -> Tensor:
-        per_head_p = probability_from_long_distance_relation(attn, mode=self.mode, threshold=self.threshold)
+        per_head_p = probability_from_long_distance_relation(attn, mode=self.mode, threshold=self.threshold, layer=self.layer)
         B, N, C = input.shape
         B, H, N, _ = attn.shape
         input = input.reshape(B, N, H, C // H).permute(2, 0, 1, 3)
