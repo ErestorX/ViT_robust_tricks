@@ -14,12 +14,14 @@ class Attention(nn.Module):
         self.scale = qk_scale or head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        if block_pos == 0:
-            self.attn_drop = nn.Dropout(attn_drop)
-        else:
-            self.attn_drop = CustomDropout(mode='exp', layer=block_pos)
+        self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
+        if block_pos == 0:
+            self.proj_drop = nn.Dropout(proj_drop)
+            self.custom = False
+        else:
+            self.proj_drop = CustomDropout(mode='exp', layer=block_pos)
+            self.custom = True
 
     def forward(self, x):
         B, N, C = x.shape
@@ -32,7 +34,10 @@ class Attention(nn.Module):
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        x = self.proj_drop(x)
+        if self.custom:
+            x = self.proj_drop(x, attn)
+        else:
+            x = self.proj_drop(x)
         return x
 
 

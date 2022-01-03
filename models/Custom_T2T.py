@@ -53,7 +53,7 @@ class Attention(nn.Module):
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.in_dim)
         x = self.proj(x)
-        x = self.proj_drop(x)
+        x = self.proj_drop(x, attn)
 
         # skip connection
         x = v.squeeze(1) + x   # because the original x has different size with current x, use v to do skip connection
@@ -123,7 +123,7 @@ class Token_transformer(nn.Module):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.attn = Attention(
-            dim, in_dim=in_dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+            dim, in_dim=in_dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(in_dim)
         self.mlp = Mlp(in_features=in_dim, hidden_features=int(in_dim*mlp_ratio), out_features=in_dim, act_layer=act_layer, drop=drop)
