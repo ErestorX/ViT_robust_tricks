@@ -1,4 +1,4 @@
-from utils_eval import attn_distance, adv_attn_distance, freq_hist, CKA_in_summaries
+from utils_eval import attn_distance, adv_attn_distance, freq_hist, get_CKAs
 from torchvision.utils import save_image
 from collections import OrderedDict
 from contextlib import suppress
@@ -21,6 +21,11 @@ parser.add_argument('--ckpt', default='', type=str)
 parser.add_argument('-p', action='store_true', default=False)
 parser.add_argument('-b', default=32, type=int)
 
+
+def overwrite_json(json_file, data):
+    json_file.seek(0)
+    json.dump(data, json_file)
+    json_file.truncate()
 
 def get_val_loader(data_path, batch_size=64):
     distributed = False
@@ -190,24 +195,26 @@ def validate_attack(model, loader, loss_fn, val_path, summary, epsilonMax=0.062)
 def main():
     tested_models = ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224', 'vit_base_patch16_224',
                      'vit_base_patch32_224', 't2t_vit_14']
-    custom_vit_versions = ['doexp5', 'dosq4015']
+    vit_versions = ['doexp5', 'dosq4015']
     t2t_versions = ['t', 'p']
+    # t2t_versions = ['t', 'p', 't_doexp05l']
     train_path = 'output/train/'
     val_path = 'output/val/'
     ext = '/model_best.pth.tar'
     args = parser.parse_args()
-    if os.path.exists(args.val_path + 'all_summaries.json'):
-        json_file = open(args.val_path + 'all_summaries.json', 'r')
-        all_summaries = json.load(json_file)
+    if os.path.exists(val_path + 'all_summaries.json'):
+        with open(val_path + 'all_summaries.json', 'r') as json_file:
+            all_summaries = json.load(json_file)
+        json_file = open(val_path + 'all_summaries.json', 'w')
     else:
-        json_file = open(args.val_path + 'all_summaries.json', 'w+')
+        json_file = open(val_path + 'all_summaries.json', 'w+')
         all_summaries = {}
     if args.version < 0 or args.version >= len(tested_models):
         print("Error: Version asked does not exist.")
         return
 
     if 't2t' not in tested_models[args.version]:
-        if args.ckpt in custom_vit_versions:
+        if args.ckpt in vit_versions:
             ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
             val_path = val_path + tested_models[args.version] + '_' + args.ckpt
             exp_name = tested_models[args.version] + '_' + args.ckpt
@@ -221,7 +228,10 @@ def main():
         ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
         val_path = val_path + tested_models[args.version] + '_' + args.ckpt
         exp_name = tested_models[args.version] + '_' + args.ckpt
-        model_name = tested_models[args.version] + '_' + args.ckpt
+        if args.ckpt in ['t', 'p']:
+            model_name = tested_models[args.version] + '_' + args.ckpt
+        else:
+            model_name = 'custom_' + tested_models[args.version] + '_' + args.ckpt.split('_')[0]
     else:
         return
 
@@ -234,45 +244,56 @@ def main():
         else:
             model = timm.create_model(model_name, checkpoint_path=ckpt_file)
     else:
-        model = models.T2T.load_t2t_vit(model_name, ckpt_file)
+        if args.ckpt in ['t', 'p']:
+            model = models.T2T.load_t2t_vit(model_name, ckpt_file)
+        else:
+            model = models.Custom_T2T.load_custom_t2t_vit(model_name, ckpt_file)
     model = model.cuda()
-    all_summaries[exp_name] = {}
+    if exp_name not in all_summaries.keys():
+        all_summaries[exp_name] = {}
     if os.path.exists(ckpt_path) or args.p:
         loader = get_val_loader(args.data, batch_size=64)
-        os.mkdir(val_path)
+        if not os.path.exists(val_path):
+            os.mkdir(val_path)
         validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
         attn_distance(val_path.split('/')[-1], val_path, loader, model, all_summaries[exp_name])
-        json.dump(all_summaries, json_file)
+        overwrite_json(json_file, all_summaries)
         adv_attn_distance(val_path.split('/')[-1], val_path, loader, model, validate_loss_fn, all_summaries[exp_name])
-        json.dump(all_summaries, json_file)
+        overwrite_json(json_file, all_summaries)
         validate(model, loader, validate_loss_fn, val_path, all_summaries[exp_name])
-        json.dump(all_summaries, json_file)
+        overwrite_json(json_file, all_summaries)
         validate_attack(model, loader, validate_loss_fn, val_path, all_summaries[exp_name])
-        json.dump(all_summaries, json_file)
-        freq_hist(val_path.split('/')[-1], val_path)
+        overwrite_json(json_file, all_summaries)
+        # freq_hist(val_path.split('/')[-1], val_path)
 
         loss_fn = nn.CrossEntropyLoss().cuda()
         loader = get_val_loader(args.data, batch_size=args.b)
         for model_name in tested_models:
             if 't2t' not in model_name:
-                for version in custom_vit_versions:
+                for version in vit_versions:
                     ckpt_file = train_path + model_name + '_' + version + ext
                     if os.path.exists(ckpt_file):
-                        json_summaries = CKA_in_summaries(val_path, model, exp_name, 'custom_' + model_name, 'custom_' + model_name+'_'+version, loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
+                        get_CKAs(all_summaries[exp_name], model, 'custom_' + model_name, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file)
+                        overwrite_json(json_file, all_summaries)
                 ckpt_file = train_path + model_name + ext
                 if os.path.exists(ckpt_file):
-                    json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name, model_name + '_scratch', loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
-                json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name, model_name + '_pretrained', loader, loss_fn, json_summaries, pretrained=True)
+                    get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_scratch', loader, loss_fn, model_2_ckpt_file=ckpt_file)
+                    overwrite_json(json_file, all_summaries)
+                get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_pretrained', loader, loss_fn, pretrained=True)
+                overwrite_json(json_file, all_summaries)
             else:
                 for version in t2t_versions:
                     ckpt_file = train_path + model_name + '_' + version + ext
                     if os.path.exists(ckpt_file):
-                        json_summaries = CKA_in_summaries(val_path, model, exp_name, model_name + '_' + version, model_name + '_' + version, loader, loss_fn, json_summaries, model_2_ckpt_file=ckpt_file)
-        with open(val_path + '/json_summaries.json', 'w+') as j_file:
-            json.dump(json_summaries, j_file)
+                        if version in ['p, t']:
+                            model_type = model_name + '_' + version
+                        else:
+                            model_type = 'custom_' + model_name + '_' + version
+                        get_CKAs(all_summaries[exp_name], model, model_type, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file)
+                        overwrite_json(json_file, all_summaries)
 
 
 if __name__ == '__main__':
-    torch.cuda.set_device(5)
+    torch.cuda.set_device(1)
     main()

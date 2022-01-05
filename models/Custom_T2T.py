@@ -106,7 +106,9 @@ class Token_performer(nn.Module):
         kptv = torch.einsum('bin,bim->bnm', v.float(), kp)  # (B, emb, m)
         y = torch.einsum('bti,bni->btn', qp, kptv) / (D.repeat(1, 1, self.emb) + self.epsilon)  # (B, T, emb)/Diag
         # skip connection
-        y = v + self.dp(self.proj(y))  # same as token_transformer in T2T layer, use v as skip connection
+        attn = (q * self.head_cnt**-.5) @ k.transpose(-2, -1)
+        attn = attn.softmax(dim=-1)
+        y = v + self.dp(self.proj(y), attn)  # same as token_transformer in T2T layer, use v as skip connection
 
         return y
 
@@ -292,7 +294,7 @@ def custom_t2t_vit_14_t(pretrained=False, **kwargs):  # adopt transformers for t
     return model
 
 
-def load_t2t_vit(model_name, checkpoint_path):
+def load_custom_t2t_vit(model_name, checkpoint_path):
     assert os.path.isfile(checkpoint_path)
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     state_dict = OrderedDict()

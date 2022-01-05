@@ -4,6 +4,7 @@ import random
 import models
 import copy
 import json
+from models.Custom_T2T import load_custom_t2t_vit
 
 
 def func_1(exp_name):
@@ -62,5 +63,14 @@ def func_3():
     print(dict_schedule)
 
 
+def func_2():
+    with open('output/val/all_summaries.json', 'r') as f:
+        data = json.load(f)
+    for key in data.keys():
+        data[key].pop("CKA_adv")
+    with open('output/val/all_summaries.json', 'w') as f:
+        json.dump(data, f)
+
+
 if __name__ == '__main__':
-    pass
+    print(1**-.5)
