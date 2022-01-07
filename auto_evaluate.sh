@@ -1,6 +1,6 @@
 #!/bin/bash
 
-StringVal="doexp5 dosq4015 t p"
+StringVal="doexp5 dosq4015 t p t_doexp05l"
 
 for v in {0..6}; do
   for ckpt in $StringVal; do

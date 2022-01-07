@@ -144,7 +144,6 @@ class T2T_module(nn.Module):
         super().__init__()
 
         if tokens_type == 'transformer':
-            print('adopt transformer encoder for tokens-to-token')
             self.soft_split0 = nn.Unfold(kernel_size=(7, 7), stride=(4, 4), padding=(2, 2))
             self.soft_split1 = nn.Unfold(kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
             self.soft_split2 = nn.Unfold(kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
@@ -154,7 +153,6 @@ class T2T_module(nn.Module):
             self.project = nn.Linear(token_dim * 3 * 3, embed_dim)
 
         elif tokens_type == 'performer':
-            print('adopt performer encoder for tokens-to-token')
             self.soft_split0 = nn.Unfold(kernel_size=(7, 7), stride=(4, 4), padding=(2, 2))
             self.soft_split1 = nn.Unfold(kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
             self.soft_split2 = nn.Unfold(kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
@@ -167,7 +165,6 @@ class T2T_module(nn.Module):
 
         elif tokens_type == 'convolution':  # just for comparison with conolution, not our model
             # for this tokens type, you need change forward as three convolution operation
-            print('adopt convolution layers for tokens-to-token')
             self.soft_split0 = nn.Conv2d(3, token_dim, kernel_size=(7, 7), stride=(4, 4), padding=(2, 2))  # the 1st convolution
             self.soft_split1 = nn.Conv2d(token_dim, token_dim, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)) # the 2nd convolution
             self.project = nn.Conv2d(token_dim, embed_dim, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)) # the 3rd convolution
@@ -302,9 +299,9 @@ def load_custom_t2t_vit(model_name, checkpoint_path):
         name = k[7:] if k.startswith('module') else k
         state_dict[name] = v
 
-    if model_name == "t2t_vit_14_p":
+    if model_name == "custom_t2t_vit_14_p":
         model = custom_t2t_vit_14_p()
-    elif model_name == "t2t_vit_14_t":
+    elif model_name == "custom_t2t_vit_14_t":
         model = custom_t2t_vit_14_t()
     model.load_state_dict(state_dict, strict=False)
     return model

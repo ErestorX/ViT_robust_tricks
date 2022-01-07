@@ -141,6 +141,7 @@ def update_metrics(mod1_hooks, mod2_hooks, metrics, metric_name, it, writer, do_
 def attn_distance(name_model, fname, loader, model, summary):
     if 'AttDist_cln' in summary.keys():
         return summary['AttDist_cln']
+    print('\t---Starting clean attention distance computation---')
     def get_features(name):
         def hook(model, input, output):
             qkvs[name] = output.detach()
@@ -151,10 +152,10 @@ def attn_distance(name_model, fname, loader, model, summary):
     performer = False
     if 't2t' in fname:
         index = 2
-        if fname.split('/')[-1].split['_'][3] == 'p':
+        if fname.split('/')[-1].split('_')[3] == 'p':
             performer = True
-            model.tokens_to_token.attention1.attn.kqv.register_forward_hook(get_features('0'))
-            model.tokens_to_token.attention2.attn.kqv.register_forward_hook(get_features('1'))
+            model.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
+            model.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
         else:
             model.tokens_to_token.attention1.attn.qkv.register_forward_hook(get_features('0'))
             model.tokens_to_token.attention2.attn.qkv.register_forward_hook(get_features('1'))
@@ -168,7 +169,7 @@ def attn_distance(name_model, fname, loader, model, summary):
     for batch_idx, (input, target) in enumerate(loader):
         _ = model(input)
         for block, qkv in qkvs.items():
-            if 't2t' in fname and block < 2:
+            if 't2t' in fname and int(block) < 2:
                 num_heads = 1
             else:
                 num_heads = model.blocks[0].attn.num_heads
@@ -176,7 +177,7 @@ def attn_distance(name_model, fname, loader, model, summary):
             C = CCC // 3
             qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
             q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-            if performer and block < 2:
+            if performer and int(block) < 2:
                 q, k = k, q
             attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
             attn = attn.softmax(dim=-1)
@@ -198,6 +199,7 @@ def attn_distance(name_model, fname, loader, model, summary):
 def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilonMax=.062):
     if 'AttDist_adv' in summary.keys():
         return summary['AttDist_adv']
+    print('\t---Starting adversarial attention distance computation---')
     def get_features(name):
         def hook(model, input, output):
             qkvs[name] = output.detach()
@@ -208,10 +210,10 @@ def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilo
     performer = False
     if 't2t' in fname:
         index = 2
-        if fname.split('/')[-1].split['_'][3] == 'p':
+        if fname.split('/')[-1].split('_')[3] == 'p':
             performer = True
-            model.tokens_to_token.attention1.attn.kqv.register_forward_hook(get_features('0'))
-            model.tokens_to_token.attention2.attn.kqv.register_forward_hook(get_features('1'))
+            model.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
+            model.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
         else:
             model.tokens_to_token.attention1.attn.qkv.register_forward_hook(get_features('0'))
             model.tokens_to_token.attention2.attn.qkv.register_forward_hook(get_features('1'))
@@ -231,7 +233,7 @@ def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilo
         perturbedImage = torch.clamp(perturbedImage, -1, 1)
         _ = model(perturbedImage)
         for block, qkv in qkvs.items():
-            if 't2t' in fname and block < 2:
+            if 't2t' in fname and int(block) < 2:
                 num_heads = 1
             else:
                 num_heads = model.blocks[0].attn.num_heads
@@ -239,7 +241,7 @@ def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilo
             C = CCC // 3
             qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
             q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-            if performer and block < 2:
+            if performer and int(block) < 2:
                 q, k = k, q
             attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
             attn = attn.softmax(dim=-1)
@@ -278,6 +280,7 @@ def freq_hist(title, val_path):
 
 def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader):
     if model_c_name not in json_summaries.keys():
+        print('\t---Starting clean CKA computation with' + model_c_name + '---')
         writer = SummaryWriter()
         modc_hooks = []
         for j, block in enumerate(model_c.blocks):
@@ -309,6 +312,7 @@ def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader):
 
 def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062):
     if model_c_name not in json_summaries.keys():
+        print('\t---Starting transfer CKA computation with' + model_c_name + '---')
         writer = SummaryWriter()
 
         modc_hooks = []
@@ -345,8 +349,9 @@ def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader
 
 
 def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMax=0.062):
-    model_c = copy.deepcopy(model_t)
     if "CKA_adv" not in json_summaries.keys():
+        print('\t---Starting adversarial CKA computation---')
+        model_c = copy.deepcopy(model_t)
         writer = SummaryWriter()
 
         modc_hooks = []

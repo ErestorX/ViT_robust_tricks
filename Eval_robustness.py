@@ -5,6 +5,7 @@ from contextlib import suppress
 from timm.utils import *
 from torch import nn
 import argparse
+import warnings
 import models
 import json
 import torch
@@ -22,10 +23,9 @@ parser.add_argument('-p', action='store_true', default=False)
 parser.add_argument('-b', default=32, type=int)
 
 
-def overwrite_json(json_file, data):
-    json_file.seek(0)
-    json.dump(data, json_file)
-    json_file.truncate()
+def save_experiment_results(json_file, data):
+    with open(json_file, 'w') as f:
+        json.dump(data, f)
 
 def get_val_loader(data_path, batch_size=64):
     distributed = False
@@ -52,6 +52,7 @@ def get_val_loader(data_path, batch_size=64):
 def validate(model, loader, loss_fn, val_path, summary):
     if 'Metrics_cln' in summary.keys():
         return summary['Metrics_cln']
+    print('\t---Starting validation on clean DS---')
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
@@ -120,6 +121,7 @@ def validate(model, loader, loss_fn, val_path, summary):
 def validate_attack(model, loader, loss_fn, val_path, summary, epsilonMax=0.062):
     if 'Metrics_adv' in summary.keys():
         return summary['Metrics_adv']
+    print('\t---Starting validation on attacked DS---')
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
@@ -196,8 +198,7 @@ def main():
     tested_models = ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224', 'vit_base_patch16_224',
                      'vit_base_patch32_224', 't2t_vit_14']
     vit_versions = ['doexp5', 'dosq4015']
-    t2t_versions = ['t', 'p']
-    # t2t_versions = ['t', 'p', 't_doexp05l']
+    t2t_versions = ['t', 'p', 't_doexp05l']
     train_path = 'output/train/'
     val_path = 'output/val/'
     ext = '/model_best.pth.tar'
@@ -205,10 +206,11 @@ def main():
     if os.path.exists(val_path + 'all_summaries.json'):
         with open(val_path + 'all_summaries.json', 'r') as json_file:
             all_summaries = json.load(json_file)
-        json_file = open(val_path + 'all_summaries.json', 'w')
     else:
-        json_file = open(val_path + 'all_summaries.json', 'w+')
         all_summaries = {}
+        with open(val_path + 'all_summaries.json', 'w+') as f:
+            json.dump(all_summaries, f)
+    json_file = val_path + 'all_summaries.json'
     if args.version < 0 or args.version >= len(tested_models):
         print("Error: Version asked does not exist.")
         return
@@ -238,6 +240,7 @@ def main():
     ckpt_file = ckpt_path + ext
     if not args.p and not os.path.exists(ckpt_file):
         return
+    print('\n\t======Starting evaluation of ' + exp_name + '======')
     if 't2t' not in model_name:
         if args.p:
             model = timm.create_model(model_name, pretrained=True)
@@ -252,19 +255,19 @@ def main():
     if exp_name not in all_summaries.keys():
         all_summaries[exp_name] = {}
     if os.path.exists(ckpt_path) or args.p:
-        loader = get_val_loader(args.data, batch_size=64)
+        loader = get_val_loader(args.data, batch_size=16)
         if not os.path.exists(val_path):
             os.mkdir(val_path)
         validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
         attn_distance(val_path.split('/')[-1], val_path, loader, model, all_summaries[exp_name])
-        overwrite_json(json_file, all_summaries)
+        save_experiment_results(json_file, all_summaries)
         adv_attn_distance(val_path.split('/')[-1], val_path, loader, model, validate_loss_fn, all_summaries[exp_name])
-        overwrite_json(json_file, all_summaries)
+        save_experiment_results(json_file, all_summaries)
         validate(model, loader, validate_loss_fn, val_path, all_summaries[exp_name])
-        overwrite_json(json_file, all_summaries)
+        save_experiment_results(json_file, all_summaries)
         validate_attack(model, loader, validate_loss_fn, val_path, all_summaries[exp_name])
-        overwrite_json(json_file, all_summaries)
+        save_experiment_results(json_file, all_summaries)
         # freq_hist(val_path.split('/')[-1], val_path)
 
         loss_fn = nn.CrossEntropyLoss().cuda()
@@ -275,25 +278,27 @@ def main():
                     ckpt_file = train_path + model_name + '_' + version + ext
                     if os.path.exists(ckpt_file):
                         get_CKAs(all_summaries[exp_name], model, 'custom_' + model_name, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file)
-                        overwrite_json(json_file, all_summaries)
+                        save_experiment_results(json_file, all_summaries)
                 ckpt_file = train_path + model_name + ext
                 if os.path.exists(ckpt_file):
                     get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_scratch', loader, loss_fn, model_2_ckpt_file=ckpt_file)
-                    overwrite_json(json_file, all_summaries)
+                    save_experiment_results(json_file, all_summaries)
                 get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_pretrained', loader, loss_fn, pretrained=True)
-                overwrite_json(json_file, all_summaries)
+                save_experiment_results(json_file, all_summaries)
             else:
                 for version in t2t_versions:
                     ckpt_file = train_path + model_name + '_' + version + ext
                     if os.path.exists(ckpt_file):
-                        if version in ['p, t']:
+                        if version in ['p', 't']:
                             model_type = model_name + '_' + version
                         else:
                             model_type = 'custom_' + model_name + '_' + version
                         get_CKAs(all_summaries[exp_name], model, model_type, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file)
-                        overwrite_json(json_file, all_summaries)
+                        save_experiment_results(json_file, all_summaries)
 
 
 if __name__ == '__main__':
-    torch.cuda.set_device(1)
+    # print("\n/!\\ The warnings are disabled!")
+    warnings.filterwarnings("ignore")
+    torch.cuda.set_device(0)  # set GPU 0 for the RTX A5000 on workstation
     main()

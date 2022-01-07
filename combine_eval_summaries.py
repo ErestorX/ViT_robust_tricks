@@ -1,10 +1,9 @@
-import json
-
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from PIL import Image
 import numpy as np
 import argparse
+import json
 import csv
 import os
 
@@ -53,9 +52,32 @@ def summarize_visualization(val_path, exp_list, file):
     new_im.save(val_path + 'Summary_' + file)
 
 
-def summarize_dists(val_path, data):
-
-    pass
+def summarize_dists(val_path, data, adv_ds=False):
+    key_dist = 'AttDist_adv' if adv_ds else 'AttDist_cln'
+    exp_list = ['t2t_vit_14_p', 't2t_vit_14_t', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
+                'vit_base_patch32_224_scratch', 'vit_small_patch16_224_pretrained', 'vit_small_patch32_224_pretrained',
+                'vit_tiny_patch16_224_pretrained', 'vit_tiny_patch16_224_scratch']
+    exp_list = [exp for exp in exp_list if exp in data.keys() and key_dist in data[exp].keys()]
+    values = []
+    avg_values = []
+    for exp in exp_list:
+        values.append(np.asarray(data[exp][key_dist]))
+    for exp, value in zip(exp_list, values):
+        plt.title(key_dist + ' ' + exp)
+        plt.boxplot(value.swapaxes(0, 1), widths=0.5)
+        avg_values.append(np.mean(value, axis=1))
+        plt.ylim(0, 224)
+        plt.savefig(val_path + exp + '_' + key_dist + '.png')
+        plt.clf()
+    for exp, value in zip(exp_list, avg_values):
+        nb_blocks = value.shape[0]
+        x = np.arange(1, nb_blocks+1)
+        plt.scatter(x, value, label=exp)
+    plt.title('All experiments ' + key_dist)
+    plt.legend()
+    plt.ylim(0, 224)
+    plt.savefig(val_path + 'all_' + key_dist + '.png')
+    plt.clf()
 
 
 def summarize_CKAs(val_path, data, exp_code='CKA_cln'):
@@ -128,9 +150,8 @@ def combine_jsons(val_path, exp_list):
 
 def main():
     args = parser.parse_args()
-    exp_list = [exp for exp in os.listdir(args.val_path) if os.path.isdir(args.val_path + exp)]
-    exp_list = order_exp(args.val_path, exp_list)
-    data = combine_jsons(args.val_path, exp_list)
+    with open(args.val_path + 'all_summaries.json') as j_file:
+        data = json.load(j_file)
     result_cln, final_exp_list = summarize_CKAs(args.val_path, data, 'CKA_cln')
     result_adv, _ = summarize_CKAs(args.val_path, data, 'CKA_adv')
     nb_exp = len(final_exp_list)
@@ -152,4 +173,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    pass

@@ -4,7 +4,9 @@ import random
 import models
 import copy
 import json
+import matplotlib.pyplot as plt
 from models.Custom_T2T import load_custom_t2t_vit
+from tabulate import tabulate
 
 
 def func_1(exp_name):
@@ -63,14 +65,57 @@ def func_3():
     print(dict_schedule)
 
 
-def func_2():
-    with open('output/val/all_summaries.json', 'r') as f:
-        data = json.load(f)
-    for key in data.keys():
-        data[key].pop("CKA_adv")
-    with open('output/val/all_summaries.json', 'w') as f:
-        json.dump(data, f)
+def summarize_dists(val_path, data, adv_ds=False):
+    key_dist = 'AttDist_adv' if adv_ds else 'AttDist_cln'
+    exp_list = ['t2t_vit_14_p', 't2t_vit_14_t', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
+                'vit_base_patch32_224_scratch', 'vit_small_patch16_224_pretrained', 'vit_small_patch32_224_pretrained',
+                'vit_tiny_patch16_224_pretrained', 'vit_tiny_patch16_224_scratch']
+    exp_list = [exp for exp in exp_list if exp in data.keys() and key_dist in data[exp].keys()]
+    values = []
+    avg_values = []
+    for exp in exp_list:
+        values.append(np.asarray(data[exp][key_dist]))
+    for exp, value in zip(exp_list, values):
+        plt.title(key_dist + ' ' + exp)
+        plt.boxplot(value.swapaxes(0, 1), widths=0.5)
+        avg_values.append(np.mean(value, axis=1))
+        plt.ylim(0, 224)
+        plt.savefig(val_path + exp + '_' + key_dist + '.png')
+        plt.clf()
+    for exp, value in zip(exp_list, avg_values):
+        nb_blocks = value.shape[0]
+        x = np.arange(1, nb_blocks+1)
+        plt.scatter(x, value, label=exp)
+    plt.title('All experiments ' + key_dist)
+    plt.legend()
+    plt.ylim(0, 224)
+    plt.savefig(val_path + 'all_' + key_dist + '.png')
+    plt.clf()
 
+
+def get_top1_val(output_path, data):
+    exp_list = data.keys()
+    clean_top1 = [data[exp]['Metrics_cln']['top1'] for exp in exp_list]
+    adv_top1 = [data[exp]['Metrics_adv']['top1'] for exp in exp_list]
+    table = [[exp, cln, adv] for exp, cln, adv in zip(exp_list, clean_top1, adv_top1)]
+    print(tabulate(table, headers=['Model', 'Clean top1', 'Adversarial top1']))
+
+
+def get_CKA_adv_plot(output_path, data):
+    exp_list = data.keys()
+    CKA_adv_list = [data[exp]['CKA_adv'] for exp in exp_list if 'CKA_adv' in data[exp].keys()]
+    print(len(CKA_adv_list))
+    for exp, CKA_adv in zip(exp_list, CKA_adv_list):
+        fig = plt.figure(figsize=(8, 8))
+        fig.suptitle(exp)
+        ax_CKA = fig.add_subplot(111)
+        CKA_adv = np.asarray(CKA_adv)
+        ax_CKA.imshow(CKA_adv)
+        fig.tight_layout()
+        plt.savefig(output_path + exp + '_CKA_adv.png')
 
 if __name__ == '__main__':
-    print(1**-.5)
+    # summarize_dists('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')), adv_ds=False)
+    # summarize_dists('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')), adv_ds=True)
+    # get_top1_val('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')))
+    get_CKA_adv_plot('output/val/', json.load(open('output/val/all_summaries.json', 'r')))
