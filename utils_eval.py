@@ -178,7 +178,10 @@ def attn_distance(name_model, fname, loader, model, summary):
             qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
             q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
             if performer and int(block) < 2:
-                q, k = k, q
+                if int(block) == 0:
+                    q, k = model.tokens_token.attention1.prm_exp(k), model.tokens_token.attention1.prm_exp(q)
+                elif int(block) == 1:
+                    q, k = model.tokens_token.attention2.prm_exp(k), model.tokens_token.attention2.prm_exp(q)
             attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
             attn = attn.softmax(dim=-1)
             _, H, _, _ = attn.shape

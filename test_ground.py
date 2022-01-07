@@ -9,7 +9,6 @@ from models.Custom_T2T import load_custom_t2t_vit
 from tabulate import tabulate
 
 
-
 def func_1(exp_name):
     data = json.load(open('output/val/all_summaries.json', 'r'))
     list_exp = combine_eval_summaries.order_exp('output/val/', data.keys())
