@@ -6,3 +6,7 @@ numpy
 timm
 yaml
 apex
+torchmetrics
+einops
+opencv-python
+tabulate
