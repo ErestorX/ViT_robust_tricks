@@ -93,6 +93,40 @@ def summarize_dists(val_path, data, adv_ds=False):
     plt.clf()
 
 
+def compare_att_distances(model1, model2, adv_ds=False):
+    data = json.load(open('saves/all_summaries_01-06_12:00.json', 'r'))
+    exp1 = data[model1]['AttDist_adv' if adv_ds else 'AttDist_cln']
+    exp2 = data[model2]['AttDist_adv' if adv_ds else 'AttDist_cln']
+    if 't2t' in model1:
+        blocks1 = range(-2, len(exp1)-2)
+    else:
+        blocks1 = range(len(exp1))
+    if 't2t' in model2:
+        blocks2 = np.arange(-1.7, len(exp2)-1.7, 1.0)
+    else:
+        blocks2 = np.arange(.3, len(exp2)+.3, 1.0)
+    fig, ax = plt.subplots()
+    plt.title('Attention distance on ' + ('adversarial data' if adv_ds else 'clean data'))
+    bp1 = ax.boxplot(exp1, positions=blocks1, patch_artist=True, widths=0.3)
+    bp2 = ax.boxplot(exp2, positions=blocks2, patch_artist=True, widths=0.3)
+    for element in ['whiskers', 'fliers', 'means', 'medians', 'caps']:
+        plt.setp(bp1[element], color='black')
+        plt.setp(bp2[element], color='r')
+    for patch in bp1['boxes']:
+        patch.set(facecolor='None')
+    for patch in bp2['boxes']:
+        patch.set(facecolor='red', alpha=0.5)
+    ax.legend([bp1["boxes"][0], bp2["boxes"][0]], [model1, model2])
+    ax.set_ylim(0, 224)
+    ax.yaxis.grid(True)
+    blocks1 = list(blocks1)
+    blocks2 = np.round(blocks2-.3, 0).astype(np.int).tolist()
+    blocks = sorted(list(set(blocks1 + blocks2)))
+    ax.set_xticks(blocks)
+    plt.axvline(x=-.5, color='grey', alpha=0.5)
+    plt.savefig('output/val/AttDist_' + ('adv_' if adv_ds else 'cln_') + model1 + 'VS' + model2 + '.png')
+
+
 def get_top1_val(output_path, data):
     exp_list = data.keys()
     clean_top1 = [data[exp]['Metrics_cln']['top1'] for exp in exp_list]
@@ -118,4 +152,8 @@ if __name__ == '__main__':
     # summarize_dists('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')), adv_ds=False)
     # summarize_dists('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')), adv_ds=True)
     # get_top1_val('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')))
-    get_CKA_adv_plot('output/val/', json.load(open('output/val/all_summaries.json', 'r')))
+    # get_CKA_adv_plot('output/val/', json.load(open('output/val/all_summaries.json', 'r')))
+    exp = ['t2t_vit_14_t', 't2t_vit_14_p', 't2t_vit_14_t_doexp05l']
+    for e1 in exp:
+        for e2 in exp:
+            compare_att_distances(e1, e2, adv_ds=False)
