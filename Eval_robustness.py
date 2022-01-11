@@ -255,7 +255,7 @@ def main():
     if exp_name not in all_summaries.keys():
         all_summaries[exp_name] = {}
     if os.path.exists(ckpt_path) or args.p:
-        loader = get_val_loader(args.data, batch_size=16)
+        loader = get_val_loader(args.data, batch_size=64)
         if not os.path.exists(val_path):
             os.mkdir(val_path)
         validate_loss_fn = nn.CrossEntropyLoss().cuda()
@@ -292,7 +292,7 @@ def main():
                         if version in ['p', 't']:
                             model_type = model_name + '_' + version
                         else:
-                            model_type = 'custom_' + model_name + '_' + version
+                            model_type = 'custom_' + model_name + '_' + '_'.join(version.split('_')[:-1])
                         get_CKAs(all_summaries[exp_name], model, model_type, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file)
                         save_experiment_results(json_file, all_summaries)
 

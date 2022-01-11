@@ -175,23 +175,30 @@ def attn_distance(name_model, fname, loader, model, summary):
                 num_heads = model.blocks[0].attn.num_heads
             B, N, CCC = qkv.shape
             C = CCC // 3
-            qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
-            q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
             if performer and int(block) < 2:
                 if int(block) == 0:
-                    q, k = model.tokens_token.attention1.prm_exp(k), model.tokens_token.attention1.prm_exp(q)
+                    k, q, v = torch.split(qkv, model.tokens_to_token.attention1.emb, dim=-1)
+                    k, q = model.tokens_to_token.attention1.prm_exp(k), model.tokens_to_token.attention1.prm_exp(q)
                 elif int(block) == 1:
-                    q, k = model.tokens_token.attention2.prm_exp(k), model.tokens_token.attention2.prm_exp(q)
+                    k, q, v = torch.split(qkv, model.tokens_to_token.attention2.emb, dim=-1)
+                    k, q = model.tokens_to_token.attention2.prm_exp(k), model.tokens_to_token.attention2.prm_exp(q)
+                shape_k, shape_q = k.shape, q.shape
+                k, q = k.reshape(shape_k[0], 1, shape_k[1], shape_k[2]), q.reshape(shape_q[0], 1, shape_q[1], shape_q[2])
+            else:
+                qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
+                q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
             attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
-            attn = attn.softmax(dim=-1)
-            _, H, _, _ = attn.shape
-            attn = attn.permute(1, 0, 2, 3)
+            attn = attn.softmax(dim=-1).permute(1, 0, 2, 3)
             vect = torch.arange(N).reshape((1, N))
             dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
                     (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
             per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
                 attn, (1, 2, 3))
             qkvs[block] = per_head_dist_map * patch_size
+            if 't2t' in fname and int(block) == 0:
+                qkvs[block] = qkvs[block]/4
+            elif 't2t' in fname and int(block) == 1:
+                qkvs[block] = qkvs[block]/2
         break
     vals = []
     for qkv in qkvs.values():
@@ -242,10 +249,18 @@ def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilo
                 num_heads = model.blocks[0].attn.num_heads
             B, N, CCC = qkv.shape
             C = CCC // 3
-            qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
-            q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
             if performer and int(block) < 2:
-                q, k = k, q
+                if int(block) == 0:
+                    k, q, v = torch.split(qkv, model.tokens_to_token.attention1.emb, dim=-1)
+                    k, q = model.tokens_to_token.attention1.prm_exp(k), model.tokens_to_token.attention1.prm_exp(q)
+                elif int(block) == 1:
+                    k, q, v = torch.split(qkv, model.tokens_to_token.attention2.emb, dim=-1)
+                    k, q = model.tokens_to_token.attention2.prm_exp(k), model.tokens_to_token.attention2.prm_exp(q)
+                shape_k, shape_q = k.shape, q.shape
+                k, q = k.reshape(shape_k[0], 1, shape_k[1], shape_k[2]), q.reshape(shape_q[0], 1, shape_q[1], shape_q[2])
+            else:
+                qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
+                q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
             attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
             attn = attn.softmax(dim=-1)
             _, H, _, _ = attn.shape
@@ -256,6 +271,10 @@ def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilo
             per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
                 attn, (1, 2, 3))
             qkvs[block] = per_head_dist_map * patch_size
+            if 't2t' in fname and int(block) == 0:
+                qkvs[block] = qkvs[block]/4
+            elif 't2t' in fname and int(block) == 1:
+                qkvs[block] = qkvs[block]/2
         break
     vals = []
     for qkv in qkvs.values():
@@ -283,7 +302,7 @@ def freq_hist(title, val_path):
 
 def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader):
     if model_c_name not in json_summaries.keys():
-        print('\t---Starting clean CKA computation with' + model_c_name + '---')
+        print('\t---Starting clean CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
         modc_hooks = []
         for j, block in enumerate(model_c.blocks):
@@ -315,7 +334,7 @@ def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader):
 
 def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062):
     if model_c_name not in json_summaries.keys():
-        print('\t---Starting transfer CKA computation with' + model_c_name + '---')
+        print('\t---Starting transfer CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
 
         modc_hooks = []

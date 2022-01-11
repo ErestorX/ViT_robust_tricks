@@ -8,7 +8,8 @@ def probability_from_long_distance_relation(attn, mode='exp', bin_do_val=0.15, t
     def distance2proba(per_head_avg_distance, N):
         if mode == 'exp':
             proba = per_head_avg_distance/(N ** 0.5)
-            proba = .5/torch.exp(.5*layer*proba)
+            # proba = .5/torch.exp(.5*layer*proba)
+            proba = .5 - .5 / torch.exp(.25 * layer * proba)
         elif mode == 'square':
             proba = per_head_avg_distance / (N ** 0.5)
             proba[proba <= threshold] = 0
