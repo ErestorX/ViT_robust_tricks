@@ -300,7 +300,7 @@ def freq_hist(title, val_path):
         plt.imsave(val_path + '/Freq_' + img + '.png', np.log(abs(np.fft.fftshift(np.fft.fft2(image)))), cmap='gray')
 
 
-def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader):
+def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, t2t_model_1=False):
     if model_c_name not in json_summaries.keys():
         print('\t---Starting clean CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
@@ -332,7 +332,7 @@ def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader):
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062):
+def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, t2t_model_1=False):
     if model_c_name not in json_summaries.keys():
         print('\t---Starting transfer CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
@@ -370,19 +370,29 @@ def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMax=0.062):
+def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMax=0.062, t2t_model_1=False):
     if "CKA_adv" not in json_summaries.keys():
         print('\t---Starting adversarial CKA computation---')
         model_c = copy.deepcopy(model_t)
         writer = SummaryWriter()
 
         modc_hooks = []
+        if t2t_model_1:
+            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
+            modc_hooks.append(hook1)
+            modc_hooks.append(hook2)
         for j, block in enumerate(model_c.blocks):
             tgt = f'blocks.{j}'
             hook = HookedCache(model_c, tgt)
             modc_hooks.append(hook)
 
         modt_hooks = []
+        if t2t_model_1:
+            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
+            modt_hooks.append(hook1)
+            modt_hooks.append(hook2)
         for j, block in enumerate(model_t.blocks):
             tgt = f'blocks.{j}'
             hook = HookedCache(model_t, tgt)
@@ -409,7 +419,7 @@ def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMa
         json_summaries["CKA_adv"] = sim_mat.tolist()
 
 
-def get_CKAs(json_summaries, model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False):
+def get_CKAs(json_summaries, model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, t2t_model_1=False):
     if "CKA_cln" not in json_summaries.keys():
         json_summaries["CKA_cln"] = {}
     if "CKA_trf" not in json_summaries.keys():
@@ -424,6 +434,6 @@ def get_CKAs(json_summaries, model_1, model_2, name_model_2, loader, loss_fn, mo
     else:
         model_2 = timm.create_model(model_2, pretrained=True)
 
-    get_clean_CKA(json_summaries["CKA_cln"], model_1, model_2.cuda(), name_model_2, loader)
-    get_transfer_CKA(json_summaries["CKA_trf"], model_1, model_2.cuda(), name_model_2, loader, loss_fn)
-    get_adversarial_CKA(json_summaries, model_1.cuda(), loader, loss_fn)
+    get_clean_CKA(json_summaries["CKA_cln"], model_1, model_2.cuda(), name_model_2, loader, t2t_model_1=t2t_model_1)
+    get_transfer_CKA(json_summaries["CKA_trf"], model_1, model_2.cuda(), name_model_2, loader, loss_fn, t2t_model_1=t2t_model_1)
+    get_adversarial_CKA(json_summaries, model_1.cuda(), loader, loss_fn, t2t_model_1=t2t_model_1)

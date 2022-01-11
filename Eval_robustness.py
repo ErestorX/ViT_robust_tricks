@@ -272,18 +272,19 @@ def main():
 
         loss_fn = nn.CrossEntropyLoss().cuda()
         loader = get_val_loader(args.data, batch_size=args.b)
+        t2t_model_1 = 't2t' in model_name
         for model_name in tested_models:
             if 't2t' not in model_name:
                 for version in vit_versions:
                     ckpt_file = train_path + model_name + '_' + version + ext
                     if os.path.exists(ckpt_file):
-                        get_CKAs(all_summaries[exp_name], model, 'custom_' + model_name, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file)
+                        get_CKAs(all_summaries[exp_name], model, 'custom_' + model_name, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file, t2t_model_1=t2t_model_1)
                         save_experiment_results(json_file, all_summaries)
                 ckpt_file = train_path + model_name + ext
                 if os.path.exists(ckpt_file):
-                    get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_scratch', loader, loss_fn, model_2_ckpt_file=ckpt_file)
+                    get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_scratch', loader, loss_fn, model_2_ckpt_file=ckpt_file, t2t_model_1=t2t_model_1)
                     save_experiment_results(json_file, all_summaries)
-                get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_pretrained', loader, loss_fn, pretrained=True)
+                get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_pretrained', loader, loss_fn, pretrained=True, t2t_model_1=t2t_model_1)
                 save_experiment_results(json_file, all_summaries)
             else:
                 for version in t2t_versions:
@@ -293,7 +294,7 @@ def main():
                             model_type = model_name + '_' + version
                         else:
                             model_type = 'custom_' + model_name + '_' + '_'.join(version.split('_')[:-1])
-                        get_CKAs(all_summaries[exp_name], model, model_type, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file)
+                        get_CKAs(all_summaries[exp_name], model, model_type, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file, t2t_model_1=t2t_model_1)
                         save_experiment_results(json_file, all_summaries)
 
 
