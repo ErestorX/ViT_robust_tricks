@@ -1,3 +1,5 @@
+import os.path
+
 import combine_eval_summaries
 import numpy as np
 import random
@@ -5,21 +7,71 @@ import models
 import copy
 import json
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from models.Custom_T2T import load_custom_t2t_vit
 from tabulate import tabulate
 
 
 def func_1(exp_name):
-    data = json.load(open('output/val/all_summaries.json', 'r'))
-    list_exp = combine_eval_summaries.order_exp('output/val/', data.keys())
+    data = json.load(open('saves/all_summaries_01-11_17:00.json', 'r'))
+    t2t_exp = []
+    vit_exp = []
+    exp_list = list(data.keys())
+    for exp in exp_list:
+        if 't2t' in exp:
+            t2t_exp.append(exp)
+        else:
+            vit_exp.append(exp)
+    t2t_exp = sorted(t2t_exp)
+    exp_list = t2t_exp + vit_exp
+    nb_exp = len(exp_list)
     mat = []
-    for id_base, exp_base in enumerate(list_exp):
-        line = []
-        print(exp_base, len(data[exp_base][exp_name].keys()))
-        #     for id_target, exp_target in enumerate(list_exp):
-        #         line.append(data[exp_base][exp_name][exp_target])
-        #     mat.append(line)
-        # mat = np.asarray(mat)
+    for id_base, exp_base in enumerate(exp_list):
+        for id_target, exp_target in enumerate(exp_list):
+            mat.append(data[exp_base][exp_name][exp_target])
+    fig = plt.figure(figsize=(35, 35))
+    for id_i in range(nb_exp ** 2):
+        ax_CKA = fig.add_subplot(nb_exp, nb_exp, id_i + 1)
+        ax_CKA.imshow(mat[id_i])
+        if id_i // nb_exp == 0:
+            ax_CKA.set_title(exp_list[int(id_i % nb_exp)])
+        if id_i % nb_exp == 0:
+            ax_CKA.set_ylabel(exp_list[int(id_i / nb_exp)])
+        plt.setp(ax_CKA, xticks=range(0, len(mat[id_i]), 5), yticks=range(0, len(mat[id_i][0]), 5))
+    fig.tight_layout()
+    plt.savefig('output/val/Summary_' + exp_name + '.png')
+
+
+def func_2():
+    data = json.load(open('saves/all_summaries_01-11_17:00.json', 'r'))
+    t2t_exp = []
+    vit_exp = []
+    exp_list = list(data.keys())
+    for exp in exp_list:
+        if 't2t' in exp:
+            t2t_exp.append(exp)
+        else:
+            vit_exp.append(exp)
+    t2t_exp = sorted(t2t_exp)
+    exp_list = t2t_exp + vit_exp
+    nb_exp = len(exp_list)
+    mat = []
+    for id_base, exp_base in enumerate(exp_list):
+        mat.append(data[exp_base]['CKA_adv'])
+    fig = plt.figure(figsize=(35, 35))
+    for id_i in range(nb_exp ** 2):
+        ax_CKA = fig.add_subplot(nb_exp, nb_exp, id_i + 1)
+        if id_i//nb_exp != id_i%nb_exp:
+            plt.setp(ax_CKA, xticks=[], yticks=[])
+        else:
+            ax_CKA.imshow(mat[id_i//nb_exp])
+            plt.setp(ax_CKA, xticks=range(0, len(mat[id_i//nb_exp]), 5), yticks=range(0, len(mat[id_i//nb_exp][0]), 5))
+        if id_i // nb_exp == 0:
+            ax_CKA.set_title(exp_list[int(id_i % nb_exp)])
+        if id_i % nb_exp == 0:
+            ax_CKA.set_ylabel(exp_list[int(id_i / nb_exp)])
+    fig.tight_layout()
+    plt.savefig('output/val/Summary_CKA_adv.png')
 
 
 def func_3():
@@ -65,36 +117,10 @@ def func_3():
     print(dict_schedule)
 
 
-def summarize_dists(val_path, data, adv_ds=False):
-    key_dist = 'AttDist_adv' if adv_ds else 'AttDist_cln'
-    exp_list = ['t2t_vit_14_p', 't2t_vit_14_t', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
-                'vit_base_patch32_224_scratch', 'vit_small_patch16_224_pretrained', 'vit_small_patch32_224_pretrained',
-                'vit_tiny_patch16_224_pretrained', 'vit_tiny_patch16_224_scratch']
-    exp_list = [exp for exp in exp_list if exp in data.keys() and key_dist in data[exp].keys()]
-    values = []
-    avg_values = []
-    for exp in exp_list:
-        values.append(np.asarray(data[exp][key_dist]))
-    for exp, value in zip(exp_list, values):
-        plt.title(key_dist + ' ' + exp)
-        plt.boxplot(value.swapaxes(0, 1), widths=0.5)
-        avg_values.append(np.mean(value, axis=1))
-        plt.ylim(0, 224)
-        plt.savefig(val_path + exp + '_' + key_dist + '.png')
-        plt.clf()
-    for exp, value in zip(exp_list, avg_values):
-        nb_blocks = value.shape[0]
-        x = np.arange(1, nb_blocks+1)
-        plt.scatter(x, value, label=exp)
-    plt.title('All experiments ' + key_dist)
-    plt.legend()
-    plt.ylim(0, 224)
-    plt.savefig(val_path + 'all_' + key_dist + '.png')
-    plt.clf()
-
-
-def compare_att_distances(model1, model2, adv_ds=False):
-    data = json.load(open('saves/all_summaries_01-06_12:00.json', 'r'))
+def compare_att_distances_2(model1, model2, adv_ds=False):
+    if os.path.exists('output/val/AttDist_' + ('adv_' if adv_ds else 'cln_') + model2 + 'VS' + model1 + '.png'):
+        return
+    data = json.load(open('saves/all_summaries_01-11_14:15.json', 'r'))
     exp1 = data[model1]['AttDist_adv' if adv_ds else 'AttDist_cln']
     exp2 = data[model2]['AttDist_adv' if adv_ds else 'AttDist_cln']
     if 't2t' in model1:
@@ -125,6 +151,38 @@ def compare_att_distances(model1, model2, adv_ds=False):
     ax.set_xticks(blocks)
     plt.axvline(x=-.5, color='grey', alpha=0.5)
     plt.savefig('output/val/AttDist_' + ('adv_' if adv_ds else 'cln_') + model1 + 'VS' + model2 + '.png')
+    plt.close()
+
+
+def compare_att_distances(model1):
+    data = json.load(open('saves/all_summaries_01-11_14:15.json', 'r'))
+    exp1 = data[model1]['AttDist_cln']
+    exp2 = data[model1]['AttDist_adv']
+    if 't2t' in model1:
+        blocks1 = range(-2, len(exp1) - 2)
+        blocks2 = np.arange(-1.7, len(exp2) - 1.7, 1.0)
+    else:
+        blocks1 = range(len(exp1))
+        blocks2 = np.arange(.3, len(exp2) + .3, 1.0)
+    fig, ax = plt.subplots()
+    plt.title('Attention distance on ' + model1)
+    bp1 = ax.boxplot(exp1, positions=blocks1, patch_artist=True, widths=0.3)
+    bp2 = ax.boxplot(exp2, positions=blocks2, patch_artist=True, widths=0.3)
+    for element in ['whiskers', 'fliers', 'means', 'medians', 'caps']:
+        plt.setp(bp1[element], color='black')
+        plt.setp(bp2[element], color='r')
+    for patch in bp1['boxes']:
+        patch.set(facecolor='None')
+    for patch in bp2['boxes']:
+        patch.set(facecolor='red', alpha=0.5)
+    ax.legend([bp1["boxes"][0], bp2["boxes"][0]], ['Clean data', 'Adversarial data'])
+    ax.set_ylim(0, 224)
+    ax.yaxis.grid(True)
+    blocks1 = list(blocks1)
+    ax.set_xticks(blocks1)
+    plt.axvline(x=-.5, color='grey', alpha=0.5)
+    plt.savefig('output/val/AttDist_' + model1 + '.png')
+    plt.close()
 
 
 def get_top1_val(output_path, data):
@@ -135,10 +193,33 @@ def get_top1_val(output_path, data):
     print(tabulate(table, headers=['Model', 'Clean top1', 'Adversarial top1']))
 
 
+def plot_cleanacc_vs_advacc(data):
+    exp_list = list(data.keys())
+    vit_list = [exp for exp in exp_list if 't2t' not in exp]
+    t2t_list = [exp for exp in exp_list if 't2t' in exp]
+    exp_list = t2t_list + vit_list
+    clean_acc = [data[exp]['Metrics_cln']['top1'] for exp in exp_list]
+    adv_acc = [data[exp]['Metrics_adv']['top1'] for exp in exp_list]
+    fig, ax = plt.subplots()
+    plt.title('Clean accuracy vs. adversarial accuracy')
+    colors = cm.rainbow(np.linspace(0, 1, len(exp_list)))
+
+    for c, clean, adv, exp in zip(colors, clean_acc, adv_acc, exp_list):
+        if 'do' in exp:
+            ax.scatter(clean, adv, marker='s', color=c, label=exp)
+        elif 'scratch' in exp:
+            ax.scatter(clean, adv, marker='^', color=c, label=exp)
+        else:
+            ax.scatter(clean, adv, marker='o', color=c, label=exp)
+    ax.set_xlabel('Clean accuracy')
+    ax.set_ylabel('Adversarial accuracy')
+    ax.legend(fontsize=6)
+    plt.savefig('output/val/Clean_vs_Adversarial_acc.png')
+
+
 def get_CKA_adv_plot(output_path, data):
     exp_list = data.keys()
     CKA_adv_list = [data[exp]['CKA_adv'] for exp in exp_list if 'CKA_adv' in data[exp].keys()]
-    print(len(CKA_adv_list))
     for exp, CKA_adv in zip(exp_list, CKA_adv_list):
         fig = plt.figure(figsize=(8, 8))
         fig.suptitle(exp)
@@ -146,14 +227,18 @@ def get_CKA_adv_plot(output_path, data):
         CKA_adv = np.asarray(CKA_adv)
         ax_CKA.imshow(CKA_adv)
         fig.tight_layout()
-        plt.savefig(output_path + exp + '_CKA_adv.png')
+        plt.savefig(output_path + 'CKA_adv_' + exp + '.png')
 
 if __name__ == '__main__':
-    # summarize_dists('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')), adv_ds=False)
-    # summarize_dists('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')), adv_ds=True)
-    # get_top1_val('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')))
-    # get_CKA_adv_plot('output/val/', json.load(open('output/val/all_summaries.json', 'r')))
-    exp = ['t2t_vit_14_t', 't2t_vit_14_p', 't2t_vit_14_t_doexp05l']
+    # get_top1_val('output/val/', json.load(open('saves/all_summaries_01-11_14:15.json', 'r')))
+    # get_CKA_adv_plot('output/val/', json.load(open('saves/all_summaries_01-11_14:15.json', 'r')))
+    data = json.load(open('saves/all_summaries_01-11_17:00.json', 'r'))
+    exp = list(data.keys())
     for e1 in exp:
+        compare_att_distances(e1)
         for e2 in exp:
-            compare_att_distances(e1, e2, adv_ds=False)
+            compare_att_distances_2(e1, e2, adv_ds=False)
+            compare_att_distances_2(e1, e2, adv_ds=True)
+    # func_1('CKA_cln')
+    # func_2()
+    # plot_cleanacc_vs_advacc(json.load(open('saves/all_summaries_01-11_17:00.json', 'r')))
