@@ -14,23 +14,25 @@ parser.add_argument('--data', default='/home2/hugo/ImageNet', type=str)
 parser.add_argument('--version', default=0, type=int)
 parser.add_argument('--ckpt', default='', type=str)
 parser.add_argument('-p', action='store_true', default=False)
-parser.add_argument('-b', default=32, type=int)
-
-
-def save_experiment_results(json_file, data):
-    with open(json_file, 'w') as f:
-        json.dump(data, f)
+parser.add_argument('-b', default=64, type=int)
+parser.add_argument('-epsilon', default=0.062, type=int)
+parser.add_argument('-steps', default=1, type=int)
+parser.add_argument('-CKA', action='store_true', default=False)
+parser.add_argument('-CKA_single', action='store_true', default=False)
+parser.add_argument('-all_exp', action='store_true', default=False)
 
 
 def main():
-    tested_models = ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224', 'vit_base_patch16_224',
-                     'vit_base_patch32_224', 't2t_vit_14']
-    vit_versions = ['doexp5', 'dosq4015']
+    args = parser.parse_args()
+    tested_models = ['vit_base_patch16_224', 'vit_base_patch32_224', 't2t_vit_14']
+    vit_versions = ['doexp5']
     t2t_versions = ['t', 'p', 't_doexp05l']
+    if args.all_exp:
+        tested_models = tested_models + ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224']
+        vit_versions = vit_versions + ['dosq4015']
     train_path = 'output/train/'
     val_path = 'output/val/'
     ext = '/model_best.pth.tar'
-    args = parser.parse_args()
     if os.path.exists(val_path + 'all_summaries.json'):
         with open(val_path + 'all_summaries.json', 'r') as json_file:
             all_summaries = json.load(json_file)
@@ -83,47 +85,27 @@ def main():
     if exp_name not in all_summaries.keys():
         all_summaries[exp_name] = {}
     if os.path.exists(ckpt_path) or args.p:
-        loader = get_val_loader(args.data, batch_size=64)
+        loader = get_val_loader(args.data, batch_size=args.b)
         if not os.path.exists(val_path):
             os.mkdir(val_path)
-        validate_loss_fn = nn.CrossEntropyLoss().cuda()
+        loss_fn = nn.CrossEntropyLoss().cuda()
 
-        attn_distance(val_path.split('/')[-1], val_path, loader, model, all_summaries[exp_name])
+        attn_distance(model, exp_name, loader, all_summaries[exp_name])
         save_experiment_results(json_file, all_summaries)
-        adv_attn_distance(val_path.split('/')[-1], val_path, loader, model, validate_loss_fn, all_summaries[exp_name])
+        adv_attn_distance(model, exp_name, loss_fn, loader, all_summaries[exp_name], epsilonMax=args.epsilon, pgd_steps=args.steps)
         save_experiment_results(json_file, all_summaries)
-        validate(model, loader, validate_loss_fn, val_path, all_summaries[exp_name])
+        validate(model, loader, loss_fn, all_summaries[exp_name])
         save_experiment_results(json_file, all_summaries)
-        validate_attack(model, loader, validate_loss_fn, val_path, all_summaries[exp_name])
+        validate_attack(model, loader, loss_fn, all_summaries[exp_name], epsilonMax=args.epsilon, pgd_steps=args.steps)
         save_experiment_results(json_file, all_summaries)
         # freq_hist(val_path.split('/')[-1], val_path)
 
-        loss_fn = nn.CrossEntropyLoss().cuda()
-        loader = get_val_loader(args.data, batch_size=args.b)
-        t2t_model_1 = 't2t' in model_name
-        for model_name in tested_models:
-            if 't2t' not in model_name:
-                for version in vit_versions:
-                    ckpt_file = train_path + model_name + '_' + version + ext
-                    if os.path.exists(ckpt_file):
-                        get_CKAs(all_summaries[exp_name], model, 'custom_' + model_name, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file, t2t_model_1=t2t_model_1)
-                        save_experiment_results(json_file, all_summaries)
-                ckpt_file = train_path + model_name + ext
-                if os.path.exists(ckpt_file):
-                    get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_scratch', loader, loss_fn, model_2_ckpt_file=ckpt_file, t2t_model_1=t2t_model_1)
-                    save_experiment_results(json_file, all_summaries)
-                get_CKAs(all_summaries[exp_name], model, model_name, model_name + '_pretrained', loader, loss_fn, pretrained=True, t2t_model_1=t2t_model_1)
-                save_experiment_results(json_file, all_summaries)
-            else:
-                for version in t2t_versions:
-                    ckpt_file = train_path + model_name + '_' + version + ext
-                    if os.path.exists(ckpt_file):
-                        if version in ['p', 't']:
-                            model_type = model_name + '_' + version
-                        else:
-                            model_type = 'custom_' + model_name + '_' + '_'.join(version.split('_')[:-1])
-                        get_CKAs(all_summaries[exp_name], model, model_type, model_name + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file, t2t_model_1=t2t_model_1)
-                        save_experiment_results(json_file, all_summaries)
+        if args.CKA:
+            do_all_CKAs(get_CKAs, all_summaries, json_file, model, exp_name, loader, loss_fn, tested_models,
+                        vit_versions, t2t_versions, train_path, ext, args)
+        if args.CKA_single:
+            do_all_CKAs(get_CKAs_single_element, all_summaries, json_file, model, exp_name, loader, loss_fn,
+                        tested_models, vit_versions, t2t_versions, train_path, ext, args)
 
 
 if __name__ == '__main__':

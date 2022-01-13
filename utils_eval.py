@@ -10,6 +10,7 @@ from timm.utils import *
 import numpy as np
 import os.path
 import torch
+import json
 import timm
 import time
 import copy
@@ -166,7 +167,7 @@ def update_metrics(mod1_hooks, mod2_hooks, metrics, metric_name, it, writer, do_
         writer.add_image(metric_name, sim_mat, it)
 
 
-def attn_distance(name_model, fname, loader, model, summary):
+def attn_distance(model, name_model, loader, summary):
     if 'AttDist_cln' in summary.keys():
         return summary['AttDist_cln']
     print('\t---Starting clean attention distance computation---')
@@ -177,11 +178,11 @@ def attn_distance(name_model, fname, loader, model, summary):
         return hook
 
     index = 0
-    performer = False
-    if 't2t' in fname:
+    t2t = 't2t' in name_model
+    performer = t2t and name_model.split('_')[3] == 'p'
+    if t2t:
         index = 2
-        if fname.split('/')[-1].split('_')[3] == 'p':
-            performer = True
+        if performer:
             model.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
             model.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
         else:
@@ -197,7 +198,7 @@ def attn_distance(name_model, fname, loader, model, summary):
     for batch_idx, (input, target) in enumerate(loader):
         _ = model(input)
         for block, qkv in qkvs.items():
-            if 't2t' in fname and int(block) < 2:
+            if t2t and int(block) < 2:
                 num_heads = 1
             else:
                 num_heads = model.blocks[0].attn.num_heads
@@ -223,9 +224,9 @@ def attn_distance(name_model, fname, loader, model, summary):
             per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
                 attn, (1, 2, 3))
             qkvs[block] = per_head_dist_map * patch_size
-            if 't2t' in fname and int(block) == 0:
+            if t2t and int(block) == 0:
                 qkvs[block] = qkvs[block]/4
-            elif 't2t' in fname and int(block) == 1:
+            elif t2t and int(block) == 1:
                 qkvs[block] = qkvs[block]/2
         break
     vals = []
@@ -234,81 +235,81 @@ def attn_distance(name_model, fname, loader, model, summary):
     summary['AttDist_cln'] = vals
 
 
-def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilonMax=.062, pgd_steps=1):
-    if 'AttDist_adv' in summary.keys():
-        return summary['AttDist_adv']
-    print('\t---Starting adversarial attention distance computation---')
-    def get_features(name):
-        def hook(model, input, output):
-            qkvs[name] = output.detach()
+def adv_attn_distance(model, name_model, loss_fn, loader, summary, epsilonMax=.062, pgd_steps=1):
+    key = '_'.join(['AttDist_adv', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
+    if key not in summary.keys():
+        print('\t---Starting adversarial attention distance computation---')
+        def get_features(name):
+            def hook(model, input, output):
+                qkvs[name] = output.detach()
 
-        return hook
+            return hook
 
-    index = 0
-    performer = False
-    if 't2t' in fname:
-        index = 2
-        if fname.split('/')[-1].split('_')[3] == 'p':
-            performer = True
-            model.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
-            model.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
-        else:
-            model.tokens_to_token.attention1.attn.qkv.register_forward_hook(get_features('0'))
-            model.tokens_to_token.attention2.attn.qkv.register_forward_hook(get_features('1'))
-
-    for block_id, block in enumerate(model.blocks):
-        block.attn.qkv.register_forward_hook(get_features(str(block_id + index)))
-
-    patch_size = 32 if '32' in name_model.split('_')[2] else 16
-    model.eval()
-    qkvs = {}
-    for batch_idx, (input, target) in enumerate(loader):
-        for _ in range(pgd_steps):
-            input.requires_grad = True
-            output = model(input)
-            cost = loss_fn(output, target)
-            grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
-            input = input + epsilonMax * grad.sign()
-            input = torch.clamp(input, -1, 1)
-        _ = model(input)
-        for block, qkv in qkvs.items():
-            if 't2t' in fname and int(block) < 2:
-                num_heads = 1
+        index = 0
+        t2t = 't2t' in name_model
+        performer = t2t and name_model.split('_')[3] == 'p'
+        if t2t:
+            index = 2
+            if performer:
+                model.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
+                model.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
             else:
-                num_heads = model.blocks[0].attn.num_heads
-            B, N, CCC = qkv.shape
-            C = CCC // 3
-            if performer and int(block) < 2:
-                if int(block) == 0:
-                    k, q, v = torch.split(qkv, model.tokens_to_token.attention1.emb, dim=-1)
-                    k, q = model.tokens_to_token.attention1.prm_exp(k), model.tokens_to_token.attention1.prm_exp(q)
-                elif int(block) == 1:
-                    k, q, v = torch.split(qkv, model.tokens_to_token.attention2.emb, dim=-1)
-                    k, q = model.tokens_to_token.attention2.prm_exp(k), model.tokens_to_token.attention2.prm_exp(q)
-                shape_k, shape_q = k.shape, q.shape
-                k, q = k.reshape(shape_k[0], 1, shape_k[1], shape_k[2]), q.reshape(shape_q[0], 1, shape_q[1], shape_q[2])
-            else:
-                qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
-                q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-            attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
-            attn = attn.softmax(dim=-1)
-            _, H, _, _ = attn.shape
-            attn = attn.permute(1, 0, 2, 3)
-            vect = torch.arange(N).reshape((1, N))
-            dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
-                    (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
-            per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
-                attn, (1, 2, 3))
-            qkvs[block] = per_head_dist_map * patch_size
-            if 't2t' in fname and int(block) == 0:
-                qkvs[block] = qkvs[block]/4
-            elif 't2t' in fname and int(block) == 1:
-                qkvs[block] = qkvs[block]/2
-        break
-    vals = []
-    for qkv in qkvs.values():
-        vals.append(qkv.cpu().numpy().tolist())
-    summary['AttDist_adv'] = vals
+                model.tokens_to_token.attention1.attn.qkv.register_forward_hook(get_features('0'))
+                model.tokens_to_token.attention2.attn.qkv.register_forward_hook(get_features('1'))
+
+        for block_id, block in enumerate(model.blocks):
+            block.attn.qkv.register_forward_hook(get_features(str(block_id + index)))
+
+        patch_size = 32 if '32' in name_model.split('_')[2] else 16
+        model.eval()
+        qkvs = {}
+        for batch_idx, (input, target) in enumerate(loader):
+            for _ in range(pgd_steps):
+                input.requires_grad = True
+                output = model(input)
+                cost = loss_fn(output, target)
+                grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+                input = input + epsilonMax * grad.sign()
+                input = torch.clamp(input, -1, 1)
+            _ = model(input)
+            for block, qkv in qkvs.items():
+                if t2t and int(block) < 2:
+                    num_heads = 1
+                else:
+                    num_heads = model.blocks[0].attn.num_heads
+                B, N, CCC = qkv.shape
+                C = CCC // 3
+                if performer and int(block) < 2:
+                    if int(block) == 0:
+                        k, q, v = torch.split(qkv, model.tokens_to_token.attention1.emb, dim=-1)
+                        k, q = model.tokens_to_token.attention1.prm_exp(k), model.tokens_to_token.attention1.prm_exp(q)
+                    elif int(block) == 1:
+                        k, q, v = torch.split(qkv, model.tokens_to_token.attention2.emb, dim=-1)
+                        k, q = model.tokens_to_token.attention2.prm_exp(k), model.tokens_to_token.attention2.prm_exp(q)
+                    shape_k, shape_q = k.shape, q.shape
+                    k, q = k.reshape(shape_k[0], 1, shape_k[1], shape_k[2]), q.reshape(shape_q[0], 1, shape_q[1], shape_q[2])
+                else:
+                    qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
+                    q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+                attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
+                attn = attn.softmax(dim=-1)
+                _, H, _, _ = attn.shape
+                attn = attn.permute(1, 0, 2, 3)
+                vect = torch.arange(N).reshape((1, N))
+                dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
+                        (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
+                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
+                    attn, (1, 2, 3))
+                qkvs[block] = per_head_dist_map * patch_size
+                if t2t and int(block) == 0:
+                    qkvs[block] = qkvs[block]/4
+                elif t2t and int(block) == 1:
+                    qkvs[block] = qkvs[block]/2
+            break
+        vals = []
+        for qkv in qkvs.values():
+            vals.append(qkv.cpu().numpy().tolist())
+        summary[key] = vals
 
 
 def freq_hist(title, val_path):
@@ -329,31 +330,12 @@ def freq_hist(title, val_path):
         plt.imsave(val_path + '/Freq_' + img + '.png', np.log(abs(np.fft.fftshift(np.fft.fft2(image)))), cmap='gray')
 
 
-def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, t2t_model_1=False):
+def get_clean_CKA(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader):
     if model_c_name not in json_summaries.keys():
         print('\t---Starting clean CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
-        modc_hooks = []
-        if 't2t' in model_c_name:
-            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
-            modc_hooks.append(hook1)
-            modc_hooks.append(hook2)
-        for j, block in enumerate(model_c.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_c, tgt)
-            modc_hooks.append(hook)
-
-        modt_hooks = []
-        if t2t_model_1:
-            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
-            modt_hooks.append(hook1)
-            modt_hooks.append(hook2)
-        for j, block in enumerate(model_t.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_t, tgt)
-            modt_hooks.append(hook)
+        modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_c_name, is_performer=model_c_name.split('_')[3] == 'p')
+        modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
         metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
 
         with torch.no_grad():
@@ -371,32 +353,12 @@ def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, t
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1, t2t_model_1=False):
+def get_transfer_CKA(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1):
     if model_c_name not in json_summaries.keys():
         print('\t---Starting transfer CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
-
-        modc_hooks = []
-        if 't2t' in model_c_name:
-            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
-            modc_hooks.append(hook1)
-            modc_hooks.append(hook2)
-        for j, block in enumerate(model_c.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_c, tgt)
-            modc_hooks.append(hook)
-
-        modt_hooks = []
-        if t2t_model_1:
-            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
-            modt_hooks.append(hook1)
-            modt_hooks.append(hook2)
-        for j, block in enumerate(model_t.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_t, tgt)
-            modt_hooks.append(hook)
+        modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_c_name, is_performer=model_c_name.split('_')[3] == 'p')
+        modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
         metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
 
         for it, (input, target) in enumerate(data_loader):
@@ -421,33 +383,13 @@ def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1, t2t_model_1=False):
+def get_adversarial_CKA(json_summaries, model_t, model_t_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1):
     if "CKA_adv" not in json_summaries.keys():
         print('\t---Starting adversarial CKA computation---')
         model_c = copy.deepcopy(model_t)
         writer = SummaryWriter()
-
-        modc_hooks = []
-        if t2t_model_1:
-            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
-            modc_hooks.append(hook1)
-            modc_hooks.append(hook2)
-        for j, block in enumerate(model_c.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_c, tgt)
-            modc_hooks.append(hook)
-
-        modt_hooks = []
-        if t2t_model_1:
-            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
-            modt_hooks.append(hook1)
-            modt_hooks.append(hook2)
-        for j, block in enumerate(model_t.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_t, tgt)
-            modt_hooks.append(hook)
+        modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
+        modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
         metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
 
         for it, (input, target) in enumerate(data_loader):
@@ -472,39 +414,20 @@ def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMa
         json_summaries["CKA_adv"] = sim_mat.tolist()
 
 
-def get_clean_CKA_single_element(json_summaries, model_t, model_c, model_c_name, data_loader, t2t_model_1=False):
+def get_clean_CKA_single_element(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader):
     if model_c_name not in json_summaries.keys():
         print('\t---Starting clean CKA computation on single element with ' + model_c_name + '---')
         writer = SummaryWriter()
-        modc_hooks = []
-        if 't2t' in model_c_name:
-            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
-            modc_hooks.append(hook1)
-            modc_hooks.append(hook2)
-        for j, block in enumerate(model_c.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_c, tgt)
-            modc_hooks.append(hook)
-
-        modt_hooks = []
-        if t2t_model_1:
-            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
-            modt_hooks.append(hook1)
-            modt_hooks.append(hook2)
-        for j, block in enumerate(model_t.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_t, tgt)
-            modt_hooks.append(hook)
+        modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_c_name, is_performer=model_c_name.split('_')[3] == 'p')
+        modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
         metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
 
         with torch.no_grad():
             for it, (input, target) in enumerate(data_loader):
-                single_element = input[0]
+                input = input[0]
                 do_log = (it % 10 == 0)
-                _ = model_c(single_element)
-                _ = model_t(single_element)
+                _ = model_c(input)
+                _ = model_t(input)
                 update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
                 for hook0 in modc_hooks:
                     for hook1 in modt_hooks:
@@ -516,44 +439,27 @@ def get_clean_CKA_single_element(json_summaries, model_t, model_c, model_c_name,
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_transfer_CKA_single_element(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, t2t_model_1=False):
+def get_transfer_CKA_single_element(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1):
     if model_c_name not in json_summaries.keys():
         print('\t---Starting transfer CKA computation on single element with ' + model_c_name + '---')
         writer = SummaryWriter()
-        modc_hooks = []
-        if 't2t' in model_c_name:
-            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
-            modc_hooks.append(hook1)
-            modc_hooks.append(hook2)
-        for j, block in enumerate(model_c.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_c, tgt)
-            modc_hooks.append(hook)
-
-        modt_hooks = []
-        if t2t_model_1:
-            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
-            modt_hooks.append(hook1)
-            modt_hooks.append(hook2)
-        for j, block in enumerate(model_t.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_t, tgt)
-            modt_hooks.append(hook)
+        modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_c_name, is_performer=model_c_name.split('_')[3] == 'p')
+        modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
         metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
 
         for it, (input, target) in enumerate(data_loader):
-            single_element, single_target = input[0], target[0]
+            input, target = input[0], target[0]
             do_log = (it % 10 == 0)
-            _ = model_c(single_element)
-            single_element.requires_grad = True
-            output = model_c(single_element)
-            cost = loss_fn(output, single_target)
-            grad = torch.autograd.grad(cost, single_element, retain_graph=False, create_graph=False)[0]
-            perturbedImage = single_element + epsilonMax * grad.sign()
-            perturbedImage = torch.clamp(perturbedImage, -1, 1)
-            _ = model_t(perturbedImage)
+            original_input = input.clone()
+            for _ in range(pgd_steps):
+                input.requires_grad = True
+                output = model_c(input)
+                cost = loss_fn(output, target)
+                grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+                input = input + epsilonMax * grad.sign()
+                input = torch.clamp(input, -1, 1)
+            _ = model_c(original_input)
+            _ = model_t(input)
             update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
             for hook0 in modc_hooks:
                 for hook1 in modt_hooks:
@@ -565,61 +471,45 @@ def get_transfer_CKA_single_element(json_summaries, model_t, model_c, model_c_na
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_adversarial_CKA_single_element(json_summaries, model_t, data_loader, loss_fn, epsilonMax=0.062, t2t_model_1=False):
-    if "CKA_adv" not in json_summaries.keys():
-        print('\t---Starting adversarial CKA computation---')
+def get_adversarial_CKA_single_element(json_summaries, model_t, model_t_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1):
+    key = '_'.join(['CKA_single_adv', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
+    if key not in json_summaries.keys():
+        print('\t---Starting adversarial CKA computation on single element---')
         model_c = copy.deepcopy(model_t)
         writer = SummaryWriter()
-
-        modc_hooks = []
-        if t2t_model_1:
-            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
-            modc_hooks.append(hook1)
-            modc_hooks.append(hook2)
-        for j, block in enumerate(model_c.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_c, tgt)
-            modc_hooks.append(hook)
-
-        modt_hooks = []
-        if t2t_model_1:
-            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
-            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
-            modt_hooks.append(hook1)
-            modt_hooks.append(hook2)
-        for j, block in enumerate(model_t.blocks):
-            tgt = f'blocks.{j}'
-            hook = HookedCache(model_t, tgt)
-            modt_hooks.append(hook)
+        modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
+        modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
         metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
 
         for it, (input, target) in enumerate(data_loader):
-            single_element, single_target = input[0], target[0]
+            input, target = input[0], target[0]
             do_log = (it % 10 == 0)
-            _ = model_c(single_element)
-            single_element.requires_grad = True
-            output = model_c(single_element)
-            cost = loss_fn(output, single_target)
-            grad = torch.autograd.grad(cost, single_element, retain_graph=False, create_graph=False)[0]
-            perturbedImage = single_element + epsilonMax * grad.sign()
-            perturbedImage = torch.clamp(perturbedImage, -1, 1)
-            _ = model_t(perturbedImage)
+            for _ in range(pgd_steps):
+                input.requires_grad = True
+                output = model_c(input)
+                model_c.zero_grad()
+                cost = loss_fn(output, target)
+                grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+                input = input + epsilonMax * grad.sign()
+                input = torch.clamp(input, -1, 1)
+            _ = model_c(input)
             update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
             for hook0 in modc_hooks:
                 for hook1 in modt_hooks:
                     hook0.clear()
                     hook1.clear()
+            break
 
         sim_mat = get_simmat_from_metrics(metrics_ct)
-        json_summaries["CKA_adv"] = sim_mat.tolist()
+        json_summaries[key] = sim_mat.tolist()
 
 
-def get_CKAs(json_summaries, model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, t2t_model_1=False):
+def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1):
     if "CKA_cln" not in json_summaries.keys():
         json_summaries["CKA_cln"] = {}
-    if "CKA_trf" not in json_summaries.keys():
-        json_summaries["CKA_trf"] = {}
+    trf_key = '_'.join(['CKA_trf', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
+    if trf_key not in json_summaries.keys():
+        json_summaries[trf_key] = {}
     if 't2t' in model_2:
         if "custom" in model_2:
             model_2 = load_custom_t2t_vit(model_2, model_2_ckpt_file)
@@ -630,9 +520,67 @@ def get_CKAs(json_summaries, model_1, model_2, name_model_2, loader, loss_fn, mo
     else:
         model_2 = timm.create_model(model_2, pretrained=True)
 
-    get_clean_CKA(json_summaries["CKA_cln"], model_1, model_2.cuda(), name_model_2, loader, t2t_model_1=t2t_model_1)
-    get_transfer_CKA(json_summaries["CKA_trf"], model_1, model_2.cuda(), name_model_2, loader, loss_fn, t2t_model_1=t2t_model_1)
-    get_adversarial_CKA(json_summaries, model_1.cuda(), loader, loss_fn, t2t_model_1=t2t_model_1)
+    get_clean_CKA(json_summaries["CKA_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader)
+    get_transfer_CKA(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, epsilonMax, pgd_steps)
+    get_adversarial_CKA(json_summaries, model_1, name_model_1, loader, loss_fn, epsilonMax, pgd_steps)
+
+
+def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1):
+    if "CKA_single_cln" not in json_summaries.keys():
+        json_summaries["CKA_single_cln"] = {}
+    trf_key = '_'.join(['CKA_single_trf', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
+    if trf_key not in json_summaries.keys():
+        json_summaries[trf_key] = {}
+    if 't2t' in model_2:
+        if "custom" in model_2:
+            model_2 = load_custom_t2t_vit(model_2, model_2_ckpt_file)
+        else:
+            model_2 = load_t2t_vit(model_2, model_2_ckpt_file)
+    elif not pretrained:
+        model_2 = timm.create_model(model_2, checkpoint_path=model_2_ckpt_file)
+    else:
+        model_2 = timm.create_model(model_2, pretrained=True)
+
+    get_clean_CKA_single_element(json_summaries["CKA_single_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader)
+    get_transfer_CKA_single_element(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, epsilonMax, pgd_steps)
+    get_adversarial_CKA_single_element(json_summaries, model_1, name_model_1, loader, loss_fn, epsilonMax, pgd_steps)
+
+
+def save_experiment_results(json_file, data):
+    with open(json_file, 'w') as f:
+        json.dump(data, f)
+
+
+def do_all_CKAs(CKA_fn, all_summaries, json_file, model, exp_name, loader, loss_fn, tested_models, vit_versions, t2t_versions, train_path, ext, args):
+    for model_name_2 in tested_models:
+        if 't2t' not in model_name_2:
+            for version in vit_versions:
+                ckpt_file = train_path + model_name_2 + '_' + version + ext
+                if os.path.exists(ckpt_file):
+                    CKA_fn(all_summaries[exp_name], model, exp_name, 'custom_' + model_name_2,
+                             model_name_2 + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file,
+                             epsilonMax=args.epsilon, pgd_steps=args.steps)
+                    save_experiment_results(json_file, all_summaries)
+            ckpt_file = train_path + model_name_2 + ext
+            if os.path.exists(ckpt_file):
+                CKA_fn(all_summaries[exp_name], model, exp_name, model_name_2, model_name_2 + '_scratch', loader,
+                         loss_fn, model_2_ckpt_file=ckpt_file, epsilonMax=args.epsilon, pgd_steps=args.steps)
+                save_experiment_results(json_file, all_summaries)
+            CKA_fn(all_summaries[exp_name], model, exp_name, model_name_2, model_name_2 + '_pretrained', loader,
+                     loss_fn, pretrained=True, epsilonMax=args.epsilon, pgd_steps=args.steps)
+            save_experiment_results(json_file, all_summaries)
+        else:
+            for version in t2t_versions:
+                ckpt_file = train_path + model_name_2 + '_' + version + ext
+                if os.path.exists(ckpt_file):
+                    if version in ['p', 't']:
+                        model_type = model_name_2 + '_' + version
+                    else:
+                        model_type = 'custom_' + model_name_2 + '_' + '_'.join(version.split('_')[:-1])
+                    CKA_fn(all_summaries[exp_name], model, exp_name, model_type, model_name_2 + '_' + version,
+                             loader, loss_fn, model_2_ckpt_file=ckpt_file, epsilonMax=args.epsilon,
+                             pgd_steps=args.steps)
+                    save_experiment_results(json_file, all_summaries)
 
 
 def get_val_loader(data_path, batch_size=64):
@@ -657,21 +605,64 @@ def get_val_loader(data_path, batch_size=64):
     return loader_eval
 
 
-def validate(model, loader, loss_fn, val_path, summary):
-    if 'Metrics_cln' in summary.keys():
-        return summary['Metrics_cln']
-    print('\t---Starting validation on clean DS---')
-    batch_time_m = AverageMeter()
-    losses_m = AverageMeter()
-    top1_m = AverageMeter()
-    top5_m = AverageMeter()
-    model.eval()
-    end = time.time()
-    last_idx = len(loader) - 1
+def validate(model, loader, loss_fn, summary):
+    if 'Metrics_cln' not in summary.keys():
+        print('\t---Starting validation on clean DS---')
+        batch_time_m = AverageMeter()
+        losses_m = AverageMeter()
+        top1_m = AverageMeter()
+        top5_m = AverageMeter()
+        model.eval()
+        end = time.time()
+        last_idx = len(loader) - 1
 
-    with torch.no_grad():
+        with torch.no_grad():
+            for batch_idx, (input, target) in enumerate(loader):
+                last_batch = batch_idx == last_idx
+                output = model(input)
+                if isinstance(output, (tuple, list)):
+                    output = output[0]
+
+                loss = loss_fn(output, target)
+                acc1, acc5 = accuracy(output, target, topk=(1, 5))
+                reduced_loss = loss.data
+                torch.cuda.synchronize()
+                losses_m.update(reduced_loss.item(), input.size(0))
+                top1_m.update(acc1.item(), output.size(0))
+                top5_m.update(acc5.item(), output.size(0))
+
+                batch_time_m.update(time.time() - end)
+                end = time.time()
+                if last_batch or batch_idx % 100 == 0:
+                    log_name = 'Clean'
+                    print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
+                                                                               batch_time=batch_time_m, top1=top1_m))
+
+        summary['Metrics_cln'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+
+
+def validate_attack(model, loader, loss_fn, summary, epsilonMax=0.062, pgd_steps=1):
+    key = '_'.join(['Metrics_adv', 'steps:'+str(pgd_steps), 'eps:'+str(epsilonMax)])
+    if key not in summary.keys():
+        print('\t---Starting validation on attacked DS---')
+        batch_time_m = AverageMeter()
+        losses_m = AverageMeter()
+        top1_m = AverageMeter()
+        top5_m = AverageMeter()
+        model.eval()
+        end = time.time()
+        last_idx = len(loader) - 1
+
         for batch_idx, (input, target) in enumerate(loader):
             last_batch = batch_idx == last_idx
+            for _ in range(pgd_steps):
+                input.requires_grad = True
+                output = model(input)
+                model.zero_grad()
+                cost = loss_fn(output, target)
+                grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+                input = input + epsilonMax * grad.sign()
+                input = torch.clamp(input, -1, 1)
             output = model(input)
             if isinstance(output, (tuple, list)):
                 output = output[0]
@@ -687,54 +678,7 @@ def validate(model, loader, loss_fn, val_path, summary):
             batch_time_m.update(time.time() - end)
             end = time.time()
             if last_batch or batch_idx % 100 == 0:
-                log_name = 'Clean'
+                log_name = 'Adversarial'
                 print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
                                                                            batch_time=batch_time_m, top1=top1_m))
-
-    summary['Metrics_cln'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
-    return summary['Metrics_cln']
-
-
-def validate_attack(model, loader, loss_fn, val_path, summary, epsilonMax=0.062, pgd_steps=1):
-    if 'Metrics_adv' in summary.keys():
-        return summary['Metrics_adv']
-    print('\t---Starting validation on attacked DS---')
-    batch_time_m = AverageMeter()
-    losses_m = AverageMeter()
-    top1_m = AverageMeter()
-    top5_m = AverageMeter()
-    model.eval()
-    end = time.time()
-    last_idx = len(loader) - 1
-
-    for batch_idx, (input, target) in enumerate(loader):
-        last_batch = batch_idx == last_idx
-        for _ in range(pgd_steps):
-            input.requires_grad = True
-            output = model(input)
-            model.zero_grad()
-            cost = loss_fn(output, target)
-            grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
-            input = input + epsilonMax * grad.sign()
-            input = torch.clamp(input, -1, 1)
-        output = model(input)
-        if isinstance(output, (tuple, list)):
-            output = output[0]
-
-        loss = loss_fn(output, target)
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        reduced_loss = loss.data
-        torch.cuda.synchronize()
-        losses_m.update(reduced_loss.item(), input.size(0))
-        top1_m.update(acc1.item(), output.size(0))
-        top5_m.update(acc5.item(), output.size(0))
-
-        batch_time_m.update(time.time() - end)
-        end = time.time()
-        if last_batch or batch_idx % 100 == 0:
-            log_name = 'Adversarial'
-            print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
-                                                                       batch_time=batch_time_m, top1=top1_m))
-
-    summary['Metrics_adv'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
-    return summary['Metrics_adv']
+        summary[key] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
