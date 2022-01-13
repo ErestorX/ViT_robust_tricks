@@ -1,16 +1,18 @@
-import os.path
-from collections import OrderedDict
+from models.Custom_T2T import load_custom_t2t_vit
 from torch.utils.tensorboard import SummaryWriter
 from matplotlib.ticker import PercentFormatter
 from models.T2T import load_t2t_vit
-from models.Custom_T2T import load_custom_t2t_vit
+from collections import OrderedDict
 import matplotlib.pyplot as plt
 from torchmetrics import Metric
 from einops import rearrange
+from timm.utils import *
 import numpy as np
-import copy
+import os.path
 import torch
 import timm
+import time
+import copy
 import cv2
 
 
@@ -232,7 +234,7 @@ def attn_distance(name_model, fname, loader, model, summary):
     summary['AttDist_cln'] = vals
 
 
-def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilonMax=.062):
+def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilonMax=.062, pgd_steps=1):
     if 'AttDist_adv' in summary.keys():
         return summary['AttDist_adv']
     print('\t---Starting adversarial attention distance computation---')
@@ -261,13 +263,14 @@ def adv_attn_distance(name_model, fname, loader, model, loss_fn, summary, epsilo
     model.eval()
     qkvs = {}
     for batch_idx, (input, target) in enumerate(loader):
-        input.requires_grad = True
-        output = model(input)
-        cost = loss_fn(output, target)
-        grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
-        perturbedImage = input + epsilonMax * grad.sign()
-        perturbedImage = torch.clamp(perturbedImage, -1, 1)
-        _ = model(perturbedImage)
+        for _ in range(pgd_steps):
+            input.requires_grad = True
+            output = model(input)
+            cost = loss_fn(output, target)
+            grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+            input = input + epsilonMax * grad.sign()
+            input = torch.clamp(input, -1, 1)
+        _ = model(input)
         for block, qkv in qkvs.items():
             if 't2t' in fname and int(block) < 2:
                 num_heads = 1
@@ -368,7 +371,7 @@ def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, t
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, t2t_model_1=False):
+def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1, t2t_model_1=False):
     if model_c_name not in json_summaries.keys():
         print('\t---Starting transfer CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
@@ -398,14 +401,16 @@ def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader
 
         for it, (input, target) in enumerate(data_loader):
             do_log = (it % 10 == 0)
-            _ = model_c(input)
-            input.requires_grad = True
-            output = model_c(input)
-            cost = loss_fn(output, target)
-            grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
-            perturbedImage = input + epsilonMax * grad.sign()
-            perturbedImage = torch.clamp(perturbedImage, -1, 1)
-            _ = model_t(perturbedImage)
+            original_input = input.clone()
+            for _ in range(pgd_steps):
+                input.requires_grad = True
+                output = model_c(input)
+                cost = loss_fn(output, target)
+                grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+                input = input + epsilonMax * grad.sign()
+                input = torch.clamp(input, -1, 1)
+            _ = model_c(original_input)
+            _ = model_t(input)
             update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
             for hook0 in modc_hooks:
                 for hook1 in modt_hooks:
@@ -416,7 +421,7 @@ def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMax=0.062, t2t_model_1=False):
+def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1, t2t_model_1=False):
     if "CKA_adv" not in json_summaries.keys():
         print('\t---Starting adversarial CKA computation---')
         model_c = copy.deepcopy(model_t)
@@ -448,13 +453,15 @@ def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMa
         for it, (input, target) in enumerate(data_loader):
             do_log = (it % 10 == 0)
             _ = model_t(input)
-            input.requires_grad = True
-            output = model_t(input)
-            cost = loss_fn(output, target)
-            grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
-            perturbedImage = input + epsilonMax * grad.sign()
-            perturbedImage = torch.clamp(perturbedImage, -1, 1)
-            _ = model_c(perturbedImage)
+            for _ in range(pgd_steps):
+                input.requires_grad = True
+                output = model_c(input)
+                model_c.zero_grad()
+                cost = loss_fn(output, target)
+                grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+                input = input + epsilonMax * grad.sign()
+                input = torch.clamp(input, -1, 1)
+            _ = model_c(input)
             update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
             for hook0 in modc_hooks:
                 for hook1 in modt_hooks:
@@ -626,3 +633,108 @@ def get_CKAs(json_summaries, model_1, model_2, name_model_2, loader, loss_fn, mo
     get_clean_CKA(json_summaries["CKA_cln"], model_1, model_2.cuda(), name_model_2, loader, t2t_model_1=t2t_model_1)
     get_transfer_CKA(json_summaries["CKA_trf"], model_1, model_2.cuda(), name_model_2, loader, loss_fn, t2t_model_1=t2t_model_1)
     get_adversarial_CKA(json_summaries, model_1.cuda(), loader, loss_fn, t2t_model_1=t2t_model_1)
+
+
+def get_val_loader(data_path, batch_size=64):
+    distributed = False
+    if 'WORLD_SIZE' in os.environ:
+        distributed = int(os.environ['WORLD_SIZE']) > 1
+    dataset_eval = timm.data.create_dataset('', root=data_path, split='validation', is_training=False, batch_size=batch_size)
+    loader_eval = timm.data.create_loader(
+        dataset_eval,
+        input_size=[3, 224, 224],
+        batch_size=batch_size,
+        is_training=False,
+        use_prefetcher=True,
+        interpolation='bicubic',
+        mean=[0.5, 0.5, 0.5],
+        std=[0.5, 0.5, 0.5],
+        num_workers=4,
+        distributed=distributed,
+        crop_pct=0.9,
+        pin_memory=False,
+    )
+    return loader_eval
+
+
+def validate(model, loader, loss_fn, val_path, summary):
+    if 'Metrics_cln' in summary.keys():
+        return summary['Metrics_cln']
+    print('\t---Starting validation on clean DS---')
+    batch_time_m = AverageMeter()
+    losses_m = AverageMeter()
+    top1_m = AverageMeter()
+    top5_m = AverageMeter()
+    model.eval()
+    end = time.time()
+    last_idx = len(loader) - 1
+
+    with torch.no_grad():
+        for batch_idx, (input, target) in enumerate(loader):
+            last_batch = batch_idx == last_idx
+            output = model(input)
+            if isinstance(output, (tuple, list)):
+                output = output[0]
+
+            loss = loss_fn(output, target)
+            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            reduced_loss = loss.data
+            torch.cuda.synchronize()
+            losses_m.update(reduced_loss.item(), input.size(0))
+            top1_m.update(acc1.item(), output.size(0))
+            top5_m.update(acc5.item(), output.size(0))
+
+            batch_time_m.update(time.time() - end)
+            end = time.time()
+            if last_batch or batch_idx % 100 == 0:
+                log_name = 'Clean'
+                print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
+                                                                           batch_time=batch_time_m, top1=top1_m))
+
+    summary['Metrics_cln'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+    return summary['Metrics_cln']
+
+
+def validate_attack(model, loader, loss_fn, val_path, summary, epsilonMax=0.062, pgd_steps=1):
+    if 'Metrics_adv' in summary.keys():
+        return summary['Metrics_adv']
+    print('\t---Starting validation on attacked DS---')
+    batch_time_m = AverageMeter()
+    losses_m = AverageMeter()
+    top1_m = AverageMeter()
+    top5_m = AverageMeter()
+    model.eval()
+    end = time.time()
+    last_idx = len(loader) - 1
+
+    for batch_idx, (input, target) in enumerate(loader):
+        last_batch = batch_idx == last_idx
+        for _ in range(pgd_steps):
+            input.requires_grad = True
+            output = model(input)
+            model.zero_grad()
+            cost = loss_fn(output, target)
+            grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
+            input = input + epsilonMax * grad.sign()
+            input = torch.clamp(input, -1, 1)
+        output = model(input)
+        if isinstance(output, (tuple, list)):
+            output = output[0]
+
+        loss = loss_fn(output, target)
+        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        reduced_loss = loss.data
+        torch.cuda.synchronize()
+        losses_m.update(reduced_loss.item(), input.size(0))
+        top1_m.update(acc1.item(), output.size(0))
+        top5_m.update(acc5.item(), output.size(0))
+
+        batch_time_m.update(time.time() - end)
+        end = time.time()
+        if last_batch or batch_idx % 100 == 0:
+            log_name = 'Adversarial'
+            print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
+                                                                       batch_time=batch_time_m, top1=top1_m))
+
+    summary['Metrics_adv'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+    return summary['Metrics_adv']
