@@ -10,9 +10,9 @@ import os
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', default='/home2/hugo/ImageNet', type=str)
-parser.add_argument('--version', default=0, type=int)
-parser.add_argument('--ckpt', default='', type=str)
+parser.add_argument('-data', default='/home2/hugo/ImageNet', type=str)
+parser.add_argument('-version', default=0, type=int)
+parser.add_argument('-ckpt', default='', type=str)
 parser.add_argument('-p', action='store_true', default=False)
 parser.add_argument('-b', default=64, type=int)
 parser.add_argument('-epsilon', default=0.062, type=float)
@@ -25,7 +25,6 @@ parser.add_argument('-all_exp', action='store_true', default=False)
 
 def main():
     args = parser.parse_args()
-    print(args)
     if args.steps != 1:
         args.step_size = 0.025
     tested_models = ['vit_base_patch16_224', 'vit_base_patch32_224', 't2t_vit_14']

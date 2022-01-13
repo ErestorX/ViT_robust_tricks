@@ -6,8 +6,8 @@ StringVal="doexp5 dosq4015 t p t_doexp05l"
 ARGS=""
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --data)
-      ARGS="${ARGS} --data $2"
+    -data)
+      ARGS="${ARGS} -data $2"
       shift # past argument
       shift # past value
       ;;
@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
       shift # past value
       ;;
     -steps)
-      SARGS="${SARGS} -steps $2"
+      ARGS="${ARGS} -steps $2"
       shift # past argument
       shift # past value
       ;;
@@ -34,17 +34,14 @@ while [[ $# -gt 0 ]]; do
     -CKA)
       ARGS="${ARGS} -CKA"
       shift # past argument
-      shift # past value
       ;;
     -CKA_single)
       ARGS="${ARGS} -CKA_single"
       shift # past argument
-      shift # past value
       ;;
     -all_exp)
       ARGS="${ARGS} -all_exp"
       shift # past argument
-      shift # past value
       ;;
     -*|--*)
       echo "Unknown option $1"
@@ -52,13 +49,12 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-echo "ARGS: ${ARGS}"
 
 #for v in {0..6}; do
-#for v in {0,1,2}; do
-#  for ckpt in $StringVal; do
-#    python3 Eval_robustness.py --data DATA --version "$v" --ckpt "$ckpt"
-#  done
-#  python3 Eval_robustness.py --data DATA --version "$v"
-#  python3 Eval_robustness.py --data DATA --version "$v" -p
-#done
+for v in {0,1,2}; do
+  for ckpt in $StringVal; do
+    python3 Eval_robustness.py -version "$v" -ckpt "$ckpt" $ARGS
+  done
+  python3 Eval_robustness.py -version "$v" $ARGS
+  python3 Eval_robustness.py -version "$v" -p $ARGS
+done
