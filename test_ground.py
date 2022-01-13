@@ -153,7 +153,22 @@ if __name__ == '__main__':
     # summarize_dists('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')), adv_ds=True)
     # get_top1_val('output/val/', json.load(open('saves/all_summaries_01-05_08:00.json', 'r')))
     # get_CKA_adv_plot('output/val/', json.load(open('output/val/all_summaries.json', 'r')))
-    exp = ['t2t_vit_14_t', 't2t_vit_14_p', 't2t_vit_14_t_doexp05l']
-    for e1 in exp:
-        for e2 in exp:
-            compare_att_distances(e1, e2, adv_ds=False)
+    # exp = ['t2t_vit_14_t', 't2t_vit_14_p', 't2t_vit_14_t_doexp05l']
+    # for e1 in exp:
+    #     for e2 in exp:
+    #         compare_att_distances(e1, e2, adv_ds=False)
+    data = json.load(open('output/val/all_summaries.json', 'r'))
+    for exp in data.keys():
+        if 't2t' in exp:
+            data[exp].pop('CKA_adv')
+            data[exp].pop('CKA_cln')
+            data[exp].pop('CKA_trf')
+        else:
+            t2t_trf_keys = [key for key in data[exp]['CKA_trf'].keys() if 't2t' in key]
+            t2t_cln_keys = [key for key in data[exp]['CKA_cln'].keys() if 't2t' in key]
+            for key in t2t_trf_keys:
+                data[exp]['CKA_trf'].pop(key)
+            for key in t2t_cln_keys:
+                data[exp]['CKA_cln'].pop(key)
+    with open('output/val/all_summaries.json', 'w') as f:
+        json.dump(data, f)

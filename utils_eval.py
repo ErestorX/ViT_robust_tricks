@@ -73,6 +73,32 @@ class MinibatchCKA(Metric):
         return xy / (torch.sqrt(xx) * torch.sqrt(yy))
 
 
+def get_all_hooks(model, is_t2t=False, is_performer=False):
+    hooks = []
+    if is_t2t:
+        if is_performer:
+            list_targets = ['tokens_to_token.attention1.kqv', 'tokens_to_token.attention1.proj',
+                            'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.kqv',
+                            'tokens_to_token.attention2.proj', 'tokens_to_token.attention2.mlp']
+        else:
+            list_targets = ['tokens_to_token.attention1.attn.qkv', 'tokens_to_token.attention1.attn.proj',
+                            'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.attn.kqv',
+                            'tokens_to_token.attention2.attn.proj', 'tokens_to_token.attention2.mlp']
+        for tgt in list_targets:
+            hook = HookedCache(model, tgt)
+            hooks.append(hook)
+        hook = HookedCache(model, 'tokens_to_token.project')
+        hooks.append(hook)
+    for j, block in enumerate(model.blocks):
+        hook = HookedCache(model, 'blocks.{}.attn.qkv'.format(j))
+        hooks.append(hook)
+        hook = HookedCache(model, 'blocks.{}.attn.proj'.format(j))
+        hooks.append(hook)
+        hook = HookedCache(model, 'blocks.{}.mlp'.format(j))
+        hooks.append(hook)
+    return hooks
+
+
 class HookedCache:
     def __init__(self, model, target):
         self.model = model
@@ -305,12 +331,22 @@ def get_clean_CKA(json_summaries, model_t, model_c, model_c_name, data_loader, t
         print('\t---Starting clean CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
         modc_hooks = []
+        if 't2t' in model_c_name:
+            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
+            modc_hooks.append(hook1)
+            modc_hooks.append(hook2)
         for j, block in enumerate(model_c.blocks):
             tgt = f'blocks.{j}'
             hook = HookedCache(model_c, tgt)
             modc_hooks.append(hook)
 
         modt_hooks = []
+        if t2t_model_1:
+            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
+            modt_hooks.append(hook1)
+            modt_hooks.append(hook2)
         for j, block in enumerate(model_t.blocks):
             tgt = f'blocks.{j}'
             hook = HookedCache(model_t, tgt)
@@ -338,12 +374,22 @@ def get_transfer_CKA(json_summaries, model_t, model_c, model_c_name, data_loader
         writer = SummaryWriter()
 
         modc_hooks = []
+        if 't2t' in model_c_name:
+            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
+            modc_hooks.append(hook1)
+            modc_hooks.append(hook2)
         for j, block in enumerate(model_c.blocks):
             tgt = f'blocks.{j}'
             hook = HookedCache(model_c, tgt)
             modc_hooks.append(hook)
 
         modt_hooks = []
+        if t2t_model_1:
+            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
+            modt_hooks.append(hook1)
+            modt_hooks.append(hook2)
         for j, block in enumerate(model_t.blocks):
             tgt = f'blocks.{j}'
             hook = HookedCache(model_t, tgt)
@@ -409,6 +455,149 @@ def get_adversarial_CKA(json_summaries, model_t, data_loader, loss_fn, epsilonMa
             perturbedImage = input + epsilonMax * grad.sign()
             perturbedImage = torch.clamp(perturbedImage, -1, 1)
             _ = model_c(perturbedImage)
+            update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
+            for hook0 in modc_hooks:
+                for hook1 in modt_hooks:
+                    hook0.clear()
+                    hook1.clear()
+
+        sim_mat = get_simmat_from_metrics(metrics_ct)
+        json_summaries["CKA_adv"] = sim_mat.tolist()
+
+
+def get_clean_CKA_single_element(json_summaries, model_t, model_c, model_c_name, data_loader, t2t_model_1=False):
+    if model_c_name not in json_summaries.keys():
+        print('\t---Starting clean CKA computation on single element with ' + model_c_name + '---')
+        writer = SummaryWriter()
+        modc_hooks = []
+        if 't2t' in model_c_name:
+            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
+            modc_hooks.append(hook1)
+            modc_hooks.append(hook2)
+        for j, block in enumerate(model_c.blocks):
+            tgt = f'blocks.{j}'
+            hook = HookedCache(model_c, tgt)
+            modc_hooks.append(hook)
+
+        modt_hooks = []
+        if t2t_model_1:
+            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
+            modt_hooks.append(hook1)
+            modt_hooks.append(hook2)
+        for j, block in enumerate(model_t.blocks):
+            tgt = f'blocks.{j}'
+            hook = HookedCache(model_t, tgt)
+            modt_hooks.append(hook)
+        metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
+
+        with torch.no_grad():
+            for it, (input, target) in enumerate(data_loader):
+                single_element = input[0]
+                do_log = (it % 10 == 0)
+                _ = model_c(single_element)
+                _ = model_t(single_element)
+                update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
+                for hook0 in modc_hooks:
+                    for hook1 in modt_hooks:
+                        hook0.clear()
+                        hook1.clear()
+                break
+
+        sim_mat = get_simmat_from_metrics(metrics_ct)
+        json_summaries[model_c_name] = sim_mat.tolist()
+
+
+def get_transfer_CKA_single_element(json_summaries, model_t, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, t2t_model_1=False):
+    if model_c_name not in json_summaries.keys():
+        print('\t---Starting transfer CKA computation on single element with ' + model_c_name + '---')
+        writer = SummaryWriter()
+        modc_hooks = []
+        if 't2t' in model_c_name:
+            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
+            modc_hooks.append(hook1)
+            modc_hooks.append(hook2)
+        for j, block in enumerate(model_c.blocks):
+            tgt = f'blocks.{j}'
+            hook = HookedCache(model_c, tgt)
+            modc_hooks.append(hook)
+
+        modt_hooks = []
+        if t2t_model_1:
+            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
+            modt_hooks.append(hook1)
+            modt_hooks.append(hook2)
+        for j, block in enumerate(model_t.blocks):
+            tgt = f'blocks.{j}'
+            hook = HookedCache(model_t, tgt)
+            modt_hooks.append(hook)
+        metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
+
+        for it, (input, target) in enumerate(data_loader):
+            single_element, single_target = input[0], target[0]
+            do_log = (it % 10 == 0)
+            _ = model_c(single_element)
+            single_element.requires_grad = True
+            output = model_c(single_element)
+            cost = loss_fn(output, single_target)
+            grad = torch.autograd.grad(cost, single_element, retain_graph=False, create_graph=False)[0]
+            perturbedImage = single_element + epsilonMax * grad.sign()
+            perturbedImage = torch.clamp(perturbedImage, -1, 1)
+            _ = model_t(perturbedImage)
+            update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
+            for hook0 in modc_hooks:
+                for hook1 in modt_hooks:
+                    hook0.clear()
+                    hook1.clear()
+            break
+
+        sim_mat = get_simmat_from_metrics(metrics_ct)
+        json_summaries[model_c_name] = sim_mat.tolist()
+
+
+def get_adversarial_CKA_single_element(json_summaries, model_t, data_loader, loss_fn, epsilonMax=0.062, t2t_model_1=False):
+    if "CKA_adv" not in json_summaries.keys():
+        print('\t---Starting adversarial CKA computation---')
+        model_c = copy.deepcopy(model_t)
+        writer = SummaryWriter()
+
+        modc_hooks = []
+        if t2t_model_1:
+            hook1 = HookedCache(model_c, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_c, 'tokens_to_token.attention2')
+            modc_hooks.append(hook1)
+            modc_hooks.append(hook2)
+        for j, block in enumerate(model_c.blocks):
+            tgt = f'blocks.{j}'
+            hook = HookedCache(model_c, tgt)
+            modc_hooks.append(hook)
+
+        modt_hooks = []
+        if t2t_model_1:
+            hook1 = HookedCache(model_t, 'tokens_to_token.attention1')
+            hook2 = HookedCache(model_t, 'tokens_to_token.attention2')
+            modt_hooks.append(hook1)
+            modt_hooks.append(hook2)
+        for j, block in enumerate(model_t.blocks):
+            tgt = f'blocks.{j}'
+            hook = HookedCache(model_t, tgt)
+            modt_hooks.append(hook)
+        metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
+
+        for it, (input, target) in enumerate(data_loader):
+            single_element, single_target = input[0], target[0]
+            do_log = (it % 10 == 0)
+            _ = model_c(single_element)
+            single_element.requires_grad = True
+            output = model_c(single_element)
+            cost = loss_fn(output, single_target)
+            grad = torch.autograd.grad(cost, single_element, retain_graph=False, create_graph=False)[0]
+            perturbedImage = single_element + epsilonMax * grad.sign()
+            perturbedImage = torch.clamp(perturbedImage, -1, 1)
+            _ = model_t(perturbedImage)
             update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
             for hook0 in modc_hooks:
                 for hook1 in modt_hooks:
