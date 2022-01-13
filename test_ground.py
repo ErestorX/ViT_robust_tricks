@@ -108,9 +108,17 @@ def get_CKA_adv_plot(output_path, data):
 
 
 if __name__ == '__main__':
-    pass
     # get_top1_val('output/val/', json.load(open('saves/all_summaries_01-11_14:15.json', 'r')))
     # get_CKA_adv_plot('output/val/', json.load(open('saves/all_summaries_01-11_14:15.json', 'r')))
     # func_1('CKA_cln')
     # func_2()
     # plot_cleanacc_vs_advacc(json.load(open('saves/all_summaries_01-11_17:00.json', 'r')))
+    data = json.load(open('output/val/all_summaries.json', 'r'))
+    for exp in data.keys():
+        metrics_adv = data[exp].pop('Metrics_adv')
+        CKA_adv = data[exp].pop('CKA_adv')
+        CKA_trf = data[exp].pop('CKA_trf')
+        data[exp]['Metrics_adv_steps:1_eps:0.0062'] = metrics_adv
+        data[exp]['CKA_adv_steps:1_eps:0.0062'] = CKA_adv
+        data[exp]['CKA_trf_steps:1_eps:0.0062'] = CKA_trf
+    json.dump(data, open('output/val/all_summaries.json', 'w'))
