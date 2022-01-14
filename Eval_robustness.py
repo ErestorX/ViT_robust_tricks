@@ -31,7 +31,7 @@ def main():
         args.step_size = 0.025
     tested_models = ['vit_base_patch16_224', 'vit_base_patch32_224', 't2t_vit_14']
     vit_versions = ['doexp5']
-    t2t_versions = ['t', 'p', 't_doexp05l']
+    t2t_versions = ['t', 'p', 't_doexp05l', 't_donegexp05l']
     if args.all_exp:
         tested_models = tested_models + ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224']
         vit_versions = vit_versions + ['dosq4015']
