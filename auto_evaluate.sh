@@ -31,6 +31,11 @@ while [[ $# -gt 0 ]]; do
       shift # past argument
       shift # past value
       ;;
+    -GPU)
+      ARGS="${ARGS} -gpu $2"
+      shift # past argument
+      shift # past value
+      ;;
     -CKA)
       ARGS="${ARGS} -CKA"
       shift # past argument

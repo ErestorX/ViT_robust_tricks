@@ -18,6 +18,7 @@ parser.add_argument('-b', default=64, type=int)
 parser.add_argument('-epsilon', default=0.062, type=float)
 parser.add_argument('-steps', default=1, type=int)
 parser.add_argument('-step_size', default=1, type=float)
+parser.add_argument('-gpu', default=0, type=int)  # 0 for the RTX A5000 on workstation
 parser.add_argument('-CKA', action='store_true', default=False)
 parser.add_argument('-CKA_single', action='store_true', default=False)
 parser.add_argument('-all_exp', action='store_true', default=False)
@@ -25,6 +26,7 @@ parser.add_argument('-all_exp', action='store_true', default=False)
 
 def main():
     args = parser.parse_args()
+    torch.cuda.set_device(args.gpu)
     if args.steps != 1:
         args.step_size = 0.025
     tested_models = ['vit_base_patch16_224', 'vit_base_patch32_224', 't2t_vit_14']
@@ -114,5 +116,4 @@ def main():
 if __name__ == '__main__':
     # print("\n/!\\ The warnings are disabled!")
     warnings.filterwarnings("ignore")
-    torch.cuda.set_device(0)  # set GPU 0 for the RTX A5000 on workstation
     main()
