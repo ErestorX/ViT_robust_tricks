@@ -1,6 +1,6 @@
 #!/bin/bash
 
-StringVal="doexp5 dosq4015 t p t_doexp05l"
+StringVal="doexp5 dosq4015 t p t_doexp05l t_donegexp05l"
 #StringVal="doexp5 t p t_doexp05l"
 
 ARGS=""
