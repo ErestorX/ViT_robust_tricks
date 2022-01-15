@@ -42,7 +42,7 @@ def main():
         args.world_size = torch.distributed.get_world_size()
         args.rank = torch.distributed.get_rank()
     else:
-        torch.cuda.set_device('0')
+        torch.cuda.set_device(0)
     assert args.rank >= 0
     if args.steps != 1:
         args.step_size = 0.025

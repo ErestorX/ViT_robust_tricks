@@ -85,7 +85,7 @@ def get_all_hooks(model, is_t2t=False, is_performer=False):
                             'tokens_to_token.attention2.proj', 'tokens_to_token.attention2.mlp']
         else:
             list_targets = ['tokens_to_token.attention1.attn.qkv', 'tokens_to_token.attention1.attn.proj',
-                            'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.attn.kqv',
+                            'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.attn.qkv',
                             'tokens_to_token.attention2.attn.proj', 'tokens_to_token.attention2.mlp']
         for tgt in list_targets:
             hook = HookedCache(model, tgt)
@@ -122,6 +122,7 @@ class HookedCache:
             if name == self.target:
                 self._target = module
                 return
+        raise ValueError('Target {} not found in model'.format(self.target))
 
     def _register_hook(self):
         def _hook(module, in_val, out_val):
@@ -369,12 +370,13 @@ def get_transfer_CKA(json_summaries, model_t, model_t_name, model_c, model_c_nam
             for _ in range(pgd_steps):
                 input.requires_grad = True
                 output = model_c(input)
+                model_c.zero_grad()
                 cost = loss_fn(output, target)
                 grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
                 input = input + step_size * grad.sign()
                 input = input_orig + torch.clamp(input - input_orig, -epsilonMax, epsilonMax)
                 input = torch.clamp(input, -1, 1).detach()
-            _ = model_c(input_orig)
+            _ = model_c(input)
             _ = model_t(input)
             update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
             for hook0 in modc_hooks:
@@ -429,7 +431,7 @@ def get_clean_CKA_single_element(json_summaries, model_t, model_t_name, model_c,
 
         with torch.no_grad():
             for it, (input, target) in enumerate(data_loader):
-                input = input[0]
+                input = input[:4]
                 do_log = (it % 10 == 0)
                 _ = model_c(input)
                 _ = model_t(input)
@@ -453,18 +455,19 @@ def get_transfer_CKA_single_element(json_summaries, model_t, model_t_name, model
         metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
 
         for it, (input, target) in enumerate(data_loader):
-            input, target = input[0], target[0]
+            input, target = input[:4], target[:4]
             input_orig = input.clone()
             do_log = (it % 10 == 0)
             for _ in range(pgd_steps):
                 input.requires_grad = True
                 output = model_c(input)
+                model_c.zero_grad()
                 cost = loss_fn(output, target)
                 grad = torch.autograd.grad(cost, input, retain_graph=False, create_graph=False)[0]
                 input = input + step_size * grad.sign()
                 input = input_orig + torch.clamp(input - input_orig, -epsilonMax, epsilonMax)
                 input = torch.clamp(input, -1, 1).detach()
-            _ = model_c(input_orig)
+            _ = model_c(input)
             _ = model_t(input)
             update_metrics(modc_hooks, modt_hooks, metrics_ct, "cka/ct", it, writer, do_log)
             for hook0 in modc_hooks:
@@ -488,9 +491,10 @@ def get_adversarial_CKA_single_element(json_summaries, model_t, model_t_name, da
         metrics_ct = make_pairwise_metrics(modc_hooks, modt_hooks)
 
         for it, (input, target) in enumerate(data_loader):
-            input, target = input[0], target[0]
+            input, target = input[:4], target[:4]
             input_orig = input.clone()
             do_log = (it % 10 == 0)
+            _ = model_t(input)
             for _ in range(pgd_steps):
                 input.requires_grad = True
                 output = model_c(input)
@@ -512,7 +516,7 @@ def get_adversarial_CKA_single_element(json_summaries, model_t, model_t_name, da
         json_summaries[key] = sim_mat.tolist()
 
 
-def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1):
+def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1, step_size=1):
     if "CKA_cln" not in json_summaries.keys():
         json_summaries["CKA_cln"] = {}
     trf_key = '_'.join(['CKA_trf', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
@@ -529,11 +533,11 @@ def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loade
         model_2 = timm.create_model(model_2, pretrained=True)
 
     get_clean_CKA(json_summaries["CKA_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader)
-    get_adversarial_CKA(json_summaries, model_1, name_model_1, loader, loss_fn, epsilonMax, pgd_steps)
-    get_transfer_CKA(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, epsilonMax, pgd_steps)
+    get_adversarial_CKA(json_summaries, model_1, name_model_1, loader, loss_fn, epsilonMax, pgd_steps, step_size=step_size)
+    get_transfer_CKA(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, epsilonMax, pgd_steps, step_size=step_size)
 
 
-def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1):
+def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1, step_size=1):
     if "CKA_single_cln" not in json_summaries.keys():
         json_summaries["CKA_single_cln"] = {}
     trf_key = '_'.join(['CKA_single_trf', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
@@ -550,8 +554,8 @@ def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name
         model_2 = timm.create_model(model_2, pretrained=True)
 
     get_clean_CKA_single_element(json_summaries["CKA_single_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader)
-    get_adversarial_CKA_single_element(json_summaries, model_1, name_model_1, loader, loss_fn, epsilonMax, pgd_steps)
-    get_transfer_CKA_single_element(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, epsilonMax, pgd_steps)
+    get_adversarial_CKA_single_element(json_summaries, model_1, name_model_1, loader, loss_fn, epsilonMax, pgd_steps, step_size=step_size)
+    get_transfer_CKA_single_element(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, epsilonMax, pgd_steps, step_size=step_size)
 
 
 def save_experiment_results(json_file, data):
