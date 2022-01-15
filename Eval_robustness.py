@@ -1,8 +1,10 @@
+from torch.nn.parallel import DistributedDataParallel as NativeDDP
 from utils_eval import *
 from torch import nn
 import argparse
 import warnings
 import models
+import torch
 import json
 import torch
 import timm
@@ -22,11 +24,26 @@ parser.add_argument('-gpu', default=0, type=int)  # 0 for the RTX A5000 on works
 parser.add_argument('-CKA', action='store_true', default=False)
 parser.add_argument('-CKA_single', action='store_true', default=False)
 parser.add_argument('-all_exp', action='store_true', default=False)
+parser.add_argument("--local_rank", default=0, type=int)
 
 
 def main():
     args = parser.parse_args()
-    torch.cuda.set_device(args.gpu)
+    args.distributed = False
+    if 'WORLD_SIZE' in os.environ:
+        args.distributed = int(os.environ['WORLD_SIZE']) > 1
+    args.device = 'cuda:0'
+    args.world_size = 1
+    args.rank = 0  # global rank
+    if args.distributed:
+        args.device = 'cuda:%d' % args.local_rank
+        torch.cuda.set_device(args.local_rank)
+        torch.distributed.init_process_group(backend='nccl', init_method='env://')
+        args.world_size = torch.distributed.get_world_size()
+        args.rank = torch.distributed.get_rank()
+    else:
+        torch.cuda.set_device('0')
+    assert args.rank >= 0
     if args.steps != 1:
         args.step_size = 0.025
     tested_models = ['vit_base_patch16_224', 'vit_base_patch32_224', 't2t_vit_14']
