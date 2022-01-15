@@ -88,16 +88,16 @@ def get_all_hooks(model, is_t2t=False, is_performer=False):
                             'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.attn.qkv',
                             'tokens_to_token.attention2.attn.proj', 'tokens_to_token.attention2.mlp']
         for tgt in list_targets:
-            hook = HookedCache(model, tgt)
+            hook = HookedCache(model.module, tgt)
             hooks.append(hook)
         hook = HookedCache(model, 'tokens_to_token.project')
         hooks.append(hook)
-    for j, block in enumerate(model.blocks):
-        hook = HookedCache(model, 'blocks.{}.attn.qkv'.format(j))
+    for j, block in enumerate(model.module.blocks):
+        hook = HookedCache(model.module, 'blocks.{}.attn.qkv'.format(j))
         hooks.append(hook)
-        hook = HookedCache(model, 'blocks.{}.attn.proj'.format(j))
+        hook = HookedCache(model.module, 'blocks.{}.attn.proj'.format(j))
         hooks.append(hook)
-        hook = HookedCache(model, 'blocks.{}.mlp'.format(j))
+        hook = HookedCache(model.module, 'blocks.{}.mlp'.format(j))
         hooks.append(hook)
     return hooks
 
@@ -168,78 +168,10 @@ def update_metrics(mod1_hooks, mod2_hooks, metrics, metric_name, it, writer, do_
         writer.add_image(metric_name, sim_mat, it)
 
 
-def attn_distance(model, name_model, loader, summary):
-    if 'AttDist_cln' in summary.keys():
-        return summary['AttDist_cln']
-    print('\t---Starting clean attention distance computation---')
-    def get_features(name):
-        def hook(model, input, output):
-            qkvs[name] = output.detach()
-
-        return hook
-
-    index = 0
-    t2t = 't2t' in name_model
-    performer = t2t and name_model.split('_')[3] == 'p'
-    if t2t:
-        index = 2
-        if performer:
-            model.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
-            model.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
-        else:
-            model.tokens_to_token.attention1.attn.qkv.register_forward_hook(get_features('0'))
-            model.tokens_to_token.attention2.attn.qkv.register_forward_hook(get_features('1'))
-
-    for block_id, block in enumerate(model.blocks):
-        block.attn.qkv.register_forward_hook(get_features(str(block_id + index)))
-
-    patch_size = 32 if '32' in name_model.split('_')[2] else 16
-    model.eval()
-    qkvs = {}
-    for batch_idx, (input, target) in enumerate(loader):
-        _ = model(input)
-        for block, qkv in qkvs.items():
-            if t2t and int(block) < 2:
-                num_heads = 1
-            else:
-                num_heads = model.blocks[0].attn.num_heads
-            B, N, CCC = qkv.shape
-            C = CCC // 3
-            if performer and int(block) < 2:
-                if int(block) == 0:
-                    k, q, v = torch.split(qkv, model.tokens_to_token.attention1.emb, dim=-1)
-                    k, q = model.tokens_to_token.attention1.prm_exp(k), model.tokens_to_token.attention1.prm_exp(q)
-                elif int(block) == 1:
-                    k, q, v = torch.split(qkv, model.tokens_to_token.attention2.emb, dim=-1)
-                    k, q = model.tokens_to_token.attention2.prm_exp(k), model.tokens_to_token.attention2.prm_exp(q)
-                shape_k, shape_q = k.shape, q.shape
-                k, q = k.reshape(shape_k[0], 1, shape_k[1], shape_k[2]), q.reshape(shape_q[0], 1, shape_q[1], shape_q[2])
-            else:
-                qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
-                q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-            attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
-            attn = attn.softmax(dim=-1).permute(1, 0, 2, 3)
-            vect = torch.arange(N).reshape((1, N))
-            dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
-                    (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
-            per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
-                attn, (1, 2, 3))
-            qkvs[block] = per_head_dist_map * patch_size
-            if t2t and int(block) == 0:
-                qkvs[block] = qkvs[block]/4
-            elif t2t and int(block) == 1:
-                qkvs[block] = qkvs[block]/2
-        break
-    vals = []
-    for qkv in qkvs.values():
-        vals.append(qkv.cpu().numpy().tolist())
-    summary['AttDist_cln'] = vals
-
-
-def adv_attn_distance(model, name_model, loss_fn, loader, summary, epsilonMax=.062, pgd_steps=1, step_size=1):
-    key = '_'.join(['AttDist_adv', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
-    if key not in summary.keys():
-        print('\t---Starting adversarial attention distance computation---')
+def attn_distance(model, name_model, loader, summary, args):
+    if 'AttDist_cln' not in summary.keys():
+        if args.local_rank == 0:
+            print('\t---Starting clean attention distance computation---')
         def get_features(name):
             def hook(model, input, output):
                 qkvs[name] = output.detach()
@@ -252,13 +184,82 @@ def adv_attn_distance(model, name_model, loss_fn, loader, summary, epsilonMax=.0
         if t2t:
             index = 2
             if performer:
-                model.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
-                model.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
+                model.module.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
+                model.module.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
             else:
-                model.tokens_to_token.attention1.attn.qkv.register_forward_hook(get_features('0'))
-                model.tokens_to_token.attention2.attn.qkv.register_forward_hook(get_features('1'))
+                model.module.tokens_to_token.attention1.attn.qkv.register_forward_hook(get_features('0'))
+                model.module.tokens_to_token.attention2.attn.qkv.register_forward_hook(get_features('1'))
 
-        for block_id, block in enumerate(model.blocks):
+        for block_id, block in enumerate(model.module.blocks):
+            block.attn.qkv.register_forward_hook(get_features(str(block_id + index)))
+
+        patch_size = 32 if '32' in name_model.split('_')[2] else 16
+        model.eval()
+        qkvs = {}
+        for batch_idx, (input, target) in enumerate(loader):
+            _ = model(input)
+            for block, qkv in qkvs.items():
+                if t2t and int(block) < 2:
+                    num_heads = 1
+                else:
+                    num_heads = model.module.blocks[0].attn.num_heads
+                B, N, CCC = qkv.shape
+                C = CCC // 3
+                if performer and int(block) < 2:
+                    if int(block) == 0:
+                        k, q, v = torch.split(qkv, model.module.tokens_to_token.attention1.emb, dim=-1)
+                        k, q = model.module.tokens_to_token.attention1.prm_exp(k), model.module.tokens_to_token.attention1.prm_exp(q)
+                    elif int(block) == 1:
+                        k, q, v = torch.split(qkv, model.module.tokens_to_token.attention2.emb, dim=-1)
+                        k, q = model.module.tokens_to_token.attention2.prm_exp(k), model.module.tokens_to_token.attention2.prm_exp(q)
+                    shape_k, shape_q = k.shape, q.shape
+                    k, q = k.reshape(shape_k[0], 1, shape_k[1], shape_k[2]), q.reshape(shape_q[0], 1, shape_q[1], shape_q[2])
+                else:
+                    qkv = qkv.reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
+                    q, k, _ = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+                attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
+                attn = attn.softmax(dim=-1).permute(1, 0, 2, 3)
+                vect = torch.arange(N).reshape((1, N))
+                dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
+                        (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
+                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
+                    attn, (1, 2, 3))
+                qkvs[block] = per_head_dist_map * patch_size
+                if t2t and int(block) == 0:
+                    qkvs[block] = qkvs[block]/4
+                elif t2t and int(block) == 1:
+                    qkvs[block] = qkvs[block]/2
+            break
+        vals = []
+        for qkv in qkvs.values():
+            vals.append(qkv.cpu().numpy().tolist())
+        summary['AttDist_cln'] = vals
+
+
+def adv_attn_distance(model, name_model, loss_fn, loader, summary, args, epsilonMax=.062, pgd_steps=1, step_size=1):
+    key = '_'.join(['AttDist_adv', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
+    if key not in summary.keys():
+        if args.local_rank == 0:
+            print('\t---Starting adversarial attention distance computation---')
+        def get_features(name):
+            def hook(model, input, output):
+                qkvs[name] = output.detach()
+
+            return hook
+
+        index = 0
+        t2t = 't2t' in name_model
+        performer = t2t and name_model.split('_')[3] == 'p'
+        if t2t:
+            index = 2
+            if performer:
+                model.module.tokens_to_token.attention1.kqv.register_forward_hook(get_features('0'))
+                model.module.tokens_to_token.attention2.kqv.register_forward_hook(get_features('1'))
+            else:
+                model.module.tokens_to_token.attention1.attn.qkv.register_forward_hook(get_features('0'))
+                model.module.tokens_to_token.attention2.attn.qkv.register_forward_hook(get_features('1'))
+
+        for block_id, block in enumerate(model.module.blocks):
             block.attn.qkv.register_forward_hook(get_features(str(block_id + index)))
 
         patch_size = 32 if '32' in name_model.split('_')[2] else 16
@@ -279,16 +280,16 @@ def adv_attn_distance(model, name_model, loss_fn, loader, summary, epsilonMax=.0
                 if t2t and int(block) < 2:
                     num_heads = 1
                 else:
-                    num_heads = model.blocks[0].attn.num_heads
+                    num_heads = model.module.blocks[0].attn.num_heads
                 B, N, CCC = qkv.shape
                 C = CCC // 3
                 if performer and int(block) < 2:
                     if int(block) == 0:
-                        k, q, v = torch.split(qkv, model.tokens_to_token.attention1.emb, dim=-1)
-                        k, q = model.tokens_to_token.attention1.prm_exp(k), model.tokens_to_token.attention1.prm_exp(q)
+                        k, q, v = torch.split(qkv, model.module.tokens_to_token.attention1.emb, dim=-1)
+                        k, q = model.module.tokens_to_token.attention1.prm_exp(k), model.module.tokens_to_token.attention1.prm_exp(q)
                     elif int(block) == 1:
-                        k, q, v = torch.split(qkv, model.tokens_to_token.attention2.emb, dim=-1)
-                        k, q = model.tokens_to_token.attention2.prm_exp(k), model.tokens_to_token.attention2.prm_exp(q)
+                        k, q, v = torch.split(qkv, model.module.tokens_to_token.attention2.emb, dim=-1)
+                        k, q = model.module.tokens_to_token.attention2.prm_exp(k), model.module.tokens_to_token.attention2.prm_exp(q)
                     shape_k, shape_q = k.shape, q.shape
                     k, q = k.reshape(shape_k[0], 1, shape_k[1], shape_k[2]), q.reshape(shape_q[0], 1, shape_q[1], shape_q[2])
                 else:
@@ -333,9 +334,10 @@ def freq_hist(title, val_path):
         plt.imsave(val_path + '/Freq_' + img + '.png', np.log(abs(np.fft.fftshift(np.fft.fft2(image)))), cmap='gray')
 
 
-def get_clean_CKA(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader):
+def get_clean_CKA(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, args):
     if model_c_name not in json_summaries.keys():
-        print('\t---Starting clean CKA computation with ' + model_c_name + '---')
+        if args.local_rank == 0:
+            print('\t---Starting clean CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
         modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_c_name, is_performer=model_c_name.split('_')[3] == 'p')
         modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
@@ -356,9 +358,10 @@ def get_clean_CKA(json_summaries, model_t, model_t_name, model_c, model_c_name, 
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_transfer_CKA(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1, step_size=1):
+def get_transfer_CKA(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, args, epsilonMax=0.062, pgd_steps=1, step_size=1):
     if model_c_name not in json_summaries.keys():
-        print('\t---Starting transfer CKA computation with ' + model_c_name + '---')
+        if args.local_rank == 0:
+            print('\t---Starting transfer CKA computation with ' + model_c_name + '---')
         writer = SummaryWriter()
         modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_c_name, is_performer=model_c_name.split('_')[3] == 'p')
         modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
@@ -388,9 +391,10 @@ def get_transfer_CKA(json_summaries, model_t, model_t_name, model_c, model_c_nam
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_adversarial_CKA(json_summaries, model_t, model_t_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1, step_size=1):
+def get_adversarial_CKA(json_summaries, model_t, model_t_name, data_loader, loss_fn, args, epsilonMax=0.062, pgd_steps=1, step_size=1):
     if "CKA_adv" not in json_summaries.keys():
-        print('\t---Starting adversarial CKA computation---')
+        if args.local_rank == 0:
+            print('\t---Starting adversarial CKA computation---')
         model_c = copy.deepcopy(model_t)
         writer = SummaryWriter()
         modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
@@ -421,9 +425,10 @@ def get_adversarial_CKA(json_summaries, model_t, model_t_name, data_loader, loss
         json_summaries["CKA_adv"] = sim_mat.tolist()
 
 
-def get_clean_CKA_single_element(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader):
+def get_clean_CKA_single_element(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, args):
     if model_c_name not in json_summaries.keys():
-        print('\t---Starting clean CKA computation on single element with ' + model_c_name + '---')
+        if args.local_rank == 0:
+            print('\t---Starting clean CKA computation on single element with ' + model_c_name + '---')
         writer = SummaryWriter()
         modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_c_name, is_performer=model_c_name.split('_')[3] == 'p')
         modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
@@ -446,9 +451,10 @@ def get_clean_CKA_single_element(json_summaries, model_t, model_t_name, model_c,
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_transfer_CKA_single_element(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1, step_size=1):
+def get_transfer_CKA_single_element(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, loss_fn, args, epsilonMax=0.062, pgd_steps=1, step_size=1):
     if model_c_name not in json_summaries.keys():
-        print('\t---Starting transfer CKA computation on single element with ' + model_c_name + '---')
+        if args.local_rank == 0:
+            print('\t---Starting transfer CKA computation on single element with ' + model_c_name + '---')
         writer = SummaryWriter()
         modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_c_name, is_performer=model_c_name.split('_')[3] == 'p')
         modt_hooks = get_all_hooks(model_t, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
@@ -480,10 +486,11 @@ def get_transfer_CKA_single_element(json_summaries, model_t, model_t_name, model
         json_summaries[model_c_name] = sim_mat.tolist()
 
 
-def get_adversarial_CKA_single_element(json_summaries, model_t, model_t_name, data_loader, loss_fn, epsilonMax=0.062, pgd_steps=1, step_size=1):
+def get_adversarial_CKA_single_element(json_summaries, model_t, model_t_name, data_loader, loss_fn, args, epsilonMax=0.062, pgd_steps=1, step_size=1):
     key = '_'.join(['CKA_single_adv', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
     if key not in json_summaries.keys():
-        print('\t---Starting adversarial CKA computation on single element---')
+        if args.local_rank == 0:
+            print('\t---Starting adversarial CKA computation on single element---')
         model_c = copy.deepcopy(model_t)
         writer = SummaryWriter()
         modc_hooks = get_all_hooks(model_c, is_t2t='t2t' in model_t_name, is_performer=model_t_name.split('_')[3] == 'p')
@@ -516,7 +523,7 @@ def get_adversarial_CKA_single_element(json_summaries, model_t, model_t_name, da
         json_summaries[key] = sim_mat.tolist()
 
 
-def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1, step_size=1):
+def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, args, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1, step_size=1):
     if "CKA_cln" not in json_summaries.keys():
         json_summaries["CKA_cln"] = {}
     trf_key = '_'.join(['CKA_trf', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
@@ -532,12 +539,12 @@ def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loade
     else:
         model_2 = timm.create_model(model_2, pretrained=True)
 
-    get_clean_CKA(json_summaries["CKA_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader)
-    get_adversarial_CKA(json_summaries, model_1, name_model_1, loader, loss_fn, epsilonMax, pgd_steps, step_size=step_size)
-    get_transfer_CKA(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, epsilonMax, pgd_steps, step_size=step_size)
+    get_clean_CKA(json_summaries["CKA_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader, args)
+    get_adversarial_CKA(json_summaries, model_1, name_model_1, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
+    get_transfer_CKA(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
 
 
-def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1, step_size=1):
+def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, args, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1, step_size=1):
     if "CKA_single_cln" not in json_summaries.keys():
         json_summaries["CKA_single_cln"] = {}
     trf_key = '_'.join(['CKA_single_trf', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
@@ -553,14 +560,15 @@ def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name
     else:
         model_2 = timm.create_model(model_2, pretrained=True)
 
-    get_clean_CKA_single_element(json_summaries["CKA_single_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader)
-    get_adversarial_CKA_single_element(json_summaries, model_1, name_model_1, loader, loss_fn, epsilonMax, pgd_steps, step_size=step_size)
-    get_transfer_CKA_single_element(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, epsilonMax, pgd_steps, step_size=step_size)
+    get_clean_CKA_single_element(json_summaries["CKA_single_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader, args)
+    get_adversarial_CKA_single_element(json_summaries, model_1, name_model_1, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
+    get_transfer_CKA_single_element(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
 
 
-def save_experiment_results(json_file, data):
-    with open(json_file, 'w') as f:
-        json.dump(data, f)
+def save_experiment_results(json_file, data, local_rank):
+    if local_rank == 0:
+        with open(json_file, 'w') as f:
+            json.dump(data, f)
 
 
 def do_all_CKAs(CKA_fn, all_summaries, json_file, model, exp_name, loader, loss_fn, tested_models, vit_versions, t2t_versions, train_path, ext, args):
@@ -570,17 +578,17 @@ def do_all_CKAs(CKA_fn, all_summaries, json_file, model, exp_name, loader, loss_
                 ckpt_file = train_path + model_name_2 + '_' + version + ext
                 if os.path.exists(ckpt_file):
                     CKA_fn(all_summaries[exp_name], model, exp_name, 'custom_' + model_name_2,
-                             model_name_2 + '_' + version, loader, loss_fn, model_2_ckpt_file=ckpt_file,
+                             model_name_2 + '_' + version, loader, loss_fn, args, model_2_ckpt_file=ckpt_file,
                              epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
-                    save_experiment_results(json_file, all_summaries)
+                    save_experiment_results(json_file, all_summaries, args.local_rank)
             ckpt_file = train_path + model_name_2 + ext
             if os.path.exists(ckpt_file):
                 CKA_fn(all_summaries[exp_name], model, exp_name, model_name_2, model_name_2 + '_scratch', loader,
-                         loss_fn, model_2_ckpt_file=ckpt_file, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
-                save_experiment_results(json_file, all_summaries)
+                         loss_fn, args, model_2_ckpt_file=ckpt_file, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
+                save_experiment_results(json_file, all_summaries, args.local_rank)
             CKA_fn(all_summaries[exp_name], model, exp_name, model_name_2, model_name_2 + '_pretrained', loader,
-                     loss_fn, pretrained=True, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
-            save_experiment_results(json_file, all_summaries)
+                     loss_fn, args, pretrained=True, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
+            save_experiment_results(json_file, all_summaries, args.local_rank)
         else:
             for version in t2t_versions:
                 ckpt_file = train_path + model_name_2 + '_' + version + ext
@@ -590,9 +598,9 @@ def do_all_CKAs(CKA_fn, all_summaries, json_file, model, exp_name, loader, loss_
                     else:
                         model_type = 'custom_' + model_name_2 + '_' + '_'.join(version.split('_')[:-1])
                     CKA_fn(all_summaries[exp_name], model, exp_name, model_type, model_name_2 + '_' + version,
-                             loader, loss_fn, model_2_ckpt_file=ckpt_file, epsilonMax=args.epsilon,
+                             loader, loss_fn, args, model_2_ckpt_file=ckpt_file, epsilonMax=args.epsilon,
                              pgd_steps=args.steps, step_size=args.step_size)
-                    save_experiment_results(json_file, all_summaries)
+                    save_experiment_results(json_file, all_summaries, args.local_rank)
 
 
 def get_val_loader(data_path, batch_size=64):
@@ -617,9 +625,10 @@ def get_val_loader(data_path, batch_size=64):
     return loader_eval
 
 
-def validate(model, loader, loss_fn, summary):
+def validate(model, loader, loss_fn, summary, args):
     if 'Metrics_cln' not in summary.keys():
-        print('\t---Starting validation on clean DS---')
+        if args.local_rank == 0:
+            print('\t---Starting validation on clean DS---')
         batch_time_m = AverageMeter()
         losses_m = AverageMeter()
         top1_m = AverageMeter()
@@ -637,7 +646,12 @@ def validate(model, loader, loss_fn, summary):
 
                 loss = loss_fn(output, target)
                 acc1, acc5 = accuracy(output, target, topk=(1, 5))
-                reduced_loss = loss.data
+                if args.distributed:
+                    reduced_loss = reduce_tensor(loss.data, args.world_size)
+                    acc1 = reduce_tensor(acc1, args.world_size)
+                    acc5 = reduce_tensor(acc5, args.world_size)
+                else:
+                    reduced_loss = loss.data
                 torch.cuda.synchronize()
                 losses_m.update(reduced_loss.item(), input.size(0))
                 top1_m.update(acc1.item(), output.size(0))
@@ -645,7 +659,7 @@ def validate(model, loader, loss_fn, summary):
 
                 batch_time_m.update(time.time() - end)
                 end = time.time()
-                if last_batch or batch_idx % 100 == 0:
+                if last_batch or batch_idx % 100 == 0 and args.local_rank == 0:
                     log_name = 'Clean'
                     print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
                                                                                batch_time=batch_time_m, top1=top1_m))
@@ -653,10 +667,11 @@ def validate(model, loader, loss_fn, summary):
         summary['Metrics_cln'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
 
 
-def validate_attack(model, loader, loss_fn, summary, epsilonMax=0.062, pgd_steps=1, step_size=1):
+def validate_attack(model, loader, loss_fn, summary, args, epsilonMax=0.062, pgd_steps=1, step_size=1):
     key = '_'.join(['Metrics_adv', 'steps:'+str(pgd_steps), 'eps:'+str(epsilonMax)])
     if key not in summary.keys():
-        print('\t---Starting validation on attacked DS---')
+        if args.local_rank == 0:
+            print('\t---Starting validation on attacked DS---')
         batch_time_m = AverageMeter()
         losses_m = AverageMeter()
         top1_m = AverageMeter()
@@ -683,7 +698,12 @@ def validate_attack(model, loader, loss_fn, summary, epsilonMax=0.062, pgd_steps
 
             loss = loss_fn(output, target)
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
-            reduced_loss = loss.data
+            if args.distributed:
+                reduced_loss = reduce_tensor(loss.data, args.world_size)
+                acc1 = reduce_tensor(acc1, args.world_size)
+                acc5 = reduce_tensor(acc5, args.world_size)
+            else:
+                reduced_loss = loss.data
             torch.cuda.synchronize()
             losses_m.update(reduced_loss.item(), input.size(0))
             top1_m.update(acc1.item(), output.size(0))
@@ -691,7 +711,7 @@ def validate_attack(model, loader, loss_fn, summary, epsilonMax=0.062, pgd_steps
 
             batch_time_m.update(time.time() - end)
             end = time.time()
-            if last_batch or batch_idx % 100 == 0:
+            if last_batch or batch_idx % 100 == 0 and args.local_rank == 0:
                 log_name = 'Adversarial'
                 print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
                                                                            batch_time=batch_time_m, top1=top1_m))

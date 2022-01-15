@@ -24,10 +24,31 @@ def plot_cka_mat(data, cka_type):
                 ax.set_title(list_models[j])
             if j == 0:
                 ax.set_ylabel(list_models[i])
-            ax.set_xticklabels(range(-6 if i < 4 else 0, step=3))
-            ax.set_yticklabels(range(-6 if j < 4 else 0, step=3))
+            # ax.set_xticklabels(range(-6 if i < 4 else 0, len(), 3))
+            # ax.set_yticklabels(range(-6 if j < 4 else 0, 3))
     fig.tight_layout()
-    plt.savefig(cka_type + '.png')
+    plt.savefig('output/val/plots/' + cka_type + '.png')
+
+def plot_cka_adv(data, cka_type):
+    list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l',
+                   'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch',
+                   'vit_base_patch32_224_doexp5']
+    mat = []
+    for model_b in list_models:
+        mat.append(data[model_b][cka_type])
+    fig = plt.figure(figsize=(35, 35))
+    for i in range(len(list_models)):
+        for j in range(len(list_models)):
+            if i != j:
+                continue
+            ax = fig.add_subplot(len(list_models), len(list_models), i * len(list_models) + j + 1)
+            ax.imshow(mat[i])
+            ax.set_xlabel(list_models[j] + ' clean data')
+            ax.set_ylabel('adversarial data')
+            # ax.set_xticklabels(range(-6 if i < 4 else 0, len(), 3))
+            # ax.set_yticklabels(range(-6 if j < 4 else 0, 3))
+    fig.tight_layout()
+    plt.savefig('output/val/plots/' + cka_type + '.png')
 
 
 def summarize_dists(val_path, data, adv_ds=False):
@@ -112,4 +133,5 @@ if __name__ == '__main__':
     # dicb = json.load(open('output/val/all_summaries_2.json', 'r'))
     # dica = recursive_merge_dictionaries(dica, dicb)
     # json.dump(dica, open('output/val/all_summaries.json', 'w'))
-    pass
+    # plot_cka_mat(json.load(open('saves/all_summaries_01-15_18:00.json', 'r')), 'CKA_single_trf_steps:40_eps:0.003')
+    plot_cka_adv(json.load(open('saves/all_summaries_01-15_18:00.json', 'r')), 'CKA_single_adv_steps:40_eps:0.003')

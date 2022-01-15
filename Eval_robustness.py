@@ -64,7 +64,8 @@ def main():
             json.dump(all_summaries, f)
     json_file = val_path + 'all_summaries.json'
     if args.version < 0 or args.version >= len(tested_models):
-        print("Error: Version asked does not exist.")
+        if args.local_rank == 0:
+            print("Error: Version asked does not exist.")
         return
 
     if 't2t' not in tested_models[args.version]:
@@ -92,7 +93,8 @@ def main():
     ckpt_file = ckpt_path + ext
     if not args.p and not os.path.exists(ckpt_file):
         return
-    print('\n\t======Starting evaluation of ' + exp_name + '======')
+    if args.local_rank == 0:
+        print('\n\t======Starting evaluation of ' + exp_name + '======')
     if 't2t' not in model_name:
         if args.p:
             model = timm.create_model(model_name, pretrained=True)
@@ -104,6 +106,8 @@ def main():
         else:
             model = models.Custom_T2T.load_custom_t2t_vit(model_name, ckpt_file)
     model = model.cuda()
+    if args.distributed:
+        model = NativeDDP(model, device_ids=[args.local_rank])
     if exp_name not in all_summaries.keys():
         all_summaries[exp_name] = {}
     if os.path.exists(ckpt_path) or args.p:
@@ -112,14 +116,14 @@ def main():
             os.mkdir(val_path)
         loss_fn = nn.CrossEntropyLoss().cuda()
 
-        attn_distance(model, exp_name, loader, all_summaries[exp_name])
-        save_experiment_results(json_file, all_summaries)
-        adv_attn_distance(model, exp_name, loss_fn, loader, all_summaries[exp_name], epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
-        save_experiment_results(json_file, all_summaries)
-        validate(model, loader, loss_fn, all_summaries[exp_name])
-        save_experiment_results(json_file, all_summaries)
-        validate_attack(model, loader, loss_fn, all_summaries[exp_name], epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
-        save_experiment_results(json_file, all_summaries)
+        attn_distance(model, exp_name, loader, all_summaries[exp_name], args)
+        save_experiment_results(json_file, all_summaries, args.local_rank)
+        adv_attn_distance(model, exp_name, loss_fn, loader, all_summaries[exp_name], args, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
+        save_experiment_results(json_file, all_summaries, args.local_rank)
+        validate(model, loader, loss_fn, all_summaries[exp_name], args)
+        save_experiment_results(json_file, all_summaries, args.local_rank)
+        validate_attack(model, loader, loss_fn, all_summaries[exp_name], args, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
+        save_experiment_results(json_file, all_summaries, args.local_rank)
         # freq_hist(val_path.split('/')[-1], val_path)
 
         if args.CKA:
@@ -131,6 +135,5 @@ def main():
 
 
 if __name__ == '__main__':
-    # print("\n/!\\ The warnings are disabled!")
     warnings.filterwarnings("ignore")
     main()
