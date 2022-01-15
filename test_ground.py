@@ -9,60 +9,25 @@ from models.Custom_T2T import load_custom_t2t_vit
 from tabulate import tabulate
 
 
-def func_1(exp_name):
-    data = json.load(open('output/val/all_summaries.json', 'r'))
-    list_exp = combine_eval_summaries.order_exp('output/val/', data.keys())
+def plot_cka_mat(data, cka_type):
+    list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5']
     mat = []
-    for id_base, exp_base in enumerate(list_exp):
-        line = []
-        print(exp_base, len(data[exp_base][exp_name].keys()))
-        #     for id_target, exp_target in enumerate(list_exp):
-        #         line.append(data[exp_base][exp_name][exp_target])
-        #     mat.append(line)
-        # mat = np.asarray(mat)
-
-
-def func_3():
-    nb_reviewer = 2
-    dict_schedule = {}
-    list_students = ['Hugo Lemarchant', 'Zongshang Pang', 'Michitaka Yoshida', 'Chenhao Li', 'Bowen Wang', 'Tianran Wu', 'Yewei Song', 'Arashi Fukui', 'Yusuke Hirota', 'Ziyi Chen', 'Anh-Khoa Vo', 'Yankun Wu', 'Tianwei Chen']
-    tmp_list = copy.deepcopy(list_students)
-    np.random.shuffle(list_students)
-    np.random.shuffle(tmp_list)
-
-    # draw the presenter
-    for i in list_students:
-        dict_schedule[i] = []
-        flag_add_i = False
-        flag_add_j = False
-        # if he is eligible to be reviewer, temporary disable him
-        if i in tmp_list:
-            tmp_list.remove(i)
-            flag_add_i = True
-        # draw the reviewer
-        for _ in range(nb_reviewer):
-            np.random.shuffle(tmp_list)
-            # if no reviewer available, refresh the reviewer list
-            if len(tmp_list) == 0:
-                tmp_list = copy.deepcopy(list_students)
-                # disable the presenter
-                tmp_list.remove(i)
-                flag_add_i = True
-                # disable the potentially already selected reviewers
-                if len(dict_schedule[i]) > 0:
-                    flag_add_j = True
-                    j = dict_schedule[i]
-                    for _j in j:
-                        tmp_list.remove(_j)
-                np.random.shuffle(tmp_list)
-            dict_schedule[i].append(tmp_list.pop(0))
-        if flag_add_i:
-            tmp_list.append(i)
-        if flag_add_j:
-            for _j in j:
-                tmp_list.append(_j)
-
-    print(dict_schedule)
+    for model_b in list_models:
+        for model_t in list_models:
+            mat.append(data[model_b][cka_type][model_t])
+    fig = plt.figure(figsize=(35, 35))
+    for i in range(len(list_models)):
+        for j in range(len(list_models)):
+            ax = fig.add_subplot(len(list_models), len(list_models), i*len(list_models)+j+1)
+            ax.imshow(mat[i*len(list_models)+j])
+            if i == 0:
+                ax.set_title(list_models[j])
+            if j == 0:
+                ax.set_ylabel(list_models[i])
+            ax.set_xticklabels(range(-6 if i < 4 else 0, step=3))
+            ax.set_yticklabels(range(-6 if j < 4 else 0, step=3))
+    fig.tight_layout()
+    plt.savefig(cka_type + '.png')
 
 
 def summarize_dists(val_path, data, adv_ds=False):
