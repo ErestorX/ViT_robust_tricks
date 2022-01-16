@@ -91,7 +91,7 @@ def get_all_hooks(model, is_t2t=False, is_performer=False):
         for tgt in list_targets:
             hook = HookedCache(model.module, tgt)
             hooks.append(hook)
-        hook = HookedCache(model, 'tokens_to_token.project')
+        hook = HookedCache(model, 'module.tokens_to_token.project')
         hooks.append(hook)
     for j, block in enumerate(model.module.blocks):
         hook = HookedCache(model.module, 'blocks.{}.attn.qkv'.format(j))
@@ -123,6 +123,7 @@ class HookedCache:
             if name == self.target:
                 self._target = module
                 return
+        print(model)
         raise ValueError('Target {} not found in model'.format(self.target))
 
     def _register_hook(self):
@@ -223,7 +224,7 @@ def attn_distance(model, name_model, loader, summary, args):
                 vect = torch.arange(N).reshape((1, N))
                 dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
                         (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
-                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
+                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).cuda(), (1, 2, 3)) / torch.sum(
                     attn, (1, 2, 3))
                 qkvs[block] = per_head_dist_map * patch_size
                 if t2t and int(block) == 0:
@@ -303,7 +304,7 @@ def adv_attn_distance(model, name_model, loss_fn, loader, summary, args, epsilon
                 vect = torch.arange(N).reshape((1, N))
                 dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
                         (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
-                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).to(device='cuda'), (1, 2, 3)) / torch.sum(
+                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).cuda(), (1, 2, 3)) / torch.sum(
                     attn, (1, 2, 3))
                 qkvs[block] = per_head_dist_map * patch_size
                 if t2t and int(block) == 0:
@@ -540,11 +541,12 @@ def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loade
     else:
         model_2 = timm.create_model(model_2, pretrained=True)
     model_2 = model_2.cuda()
-    model_2 = NativeDDP(model_2, device_ids=[args.local_rank])
+    if args.distributed:
+        model_2 = NativeDDP(model_2, device_ids=[args.local_rank])
 
-    get_clean_CKA(json_summaries["CKA_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader, args)
+    get_clean_CKA(json_summaries["CKA_cln"], model_1, name_model_1, model_2, name_model_2, loader, args)
     get_adversarial_CKA(json_summaries, model_1, name_model_1, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
-    get_transfer_CKA(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
+    get_transfer_CKA(json_summaries[trf_key], model_1, name_model_1, model_2, name_model_2, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
 
 
 def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name_model_2, loader, loss_fn, args, model_2_ckpt_file='', pretrained=False, epsilonMax=0.062, pgd_steps=1, step_size=1):
@@ -563,11 +565,12 @@ def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name
     else:
         model_2 = timm.create_model(model_2, pretrained=True)
     model_2 = model_2.cuda()
-    model_2 = NativeDDP(model_2, device_ids=[args.local_rank])
+    if args.distributed:
+        model_2 = NativeDDP(model_2, device_ids=[args.local_rank])
 
-    get_clean_CKA_single_element(json_summaries["CKA_single_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader, args)
+    get_clean_CKA_single_element(json_summaries["CKA_single_cln"], model_1, name_model_1, model_2, name_model_2, loader, args)
     get_adversarial_CKA_single_element(json_summaries, model_1, name_model_1, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
-    get_transfer_CKA_single_element(json_summaries[trf_key], model_1, name_model_1, model_2.cuda(), name_model_2, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
+    get_transfer_CKA_single_element(json_summaries[trf_key], model_1, name_model_1, model_2, name_model_2, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
 
 
 def save_experiment_results(json_file, data, local_rank):

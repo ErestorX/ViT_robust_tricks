@@ -1,12 +1,10 @@
-from torch.nn.parallel import DistributedDataParallel as NativeDDP
+from torch.nn import CrossEntropyLoss
 from utils_eval import *
-from torch import nn
 import argparse
 import warnings
 import models
 import torch
 import json
-import torch
 import timm
 import os
 
@@ -114,7 +112,7 @@ def main():
         loader = get_val_loader(args.data, batch_size=args.b)
         if not os.path.exists(val_path):
             os.mkdir(val_path)
-        loss_fn = nn.CrossEntropyLoss().cuda()
+        loss_fn = CrossEntropyLoss().cuda()
 
         attn_distance(model, exp_name, loader, all_summaries[exp_name], args)
         save_experiment_results(json_file, all_summaries, args.local_rank)
