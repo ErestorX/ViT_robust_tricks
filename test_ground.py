@@ -134,4 +134,19 @@ if __name__ == '__main__':
     # dica = recursive_merge_dictionaries(dica, dicb)
     # json.dump(dica, open('output/val/all_summaries.json', 'w'))
     # plot_cka_mat(json.load(open('saves/all_summaries_01-15_18:00.json', 'r')), 'CKA_single_trf_steps:40_eps:0.003')
-    plot_cka_adv(json.load(open('saves/all_summaries_01-15_18:00.json', 'r')), 'CKA_single_adv_steps:40_eps:0.003')
+    # plot_cka_adv(json.load(open('saves/all_summaries_01-15_18:00.json', 'r')), 'CKA_single_adv_steps:40_eps:0.003')
+    data = json.load(open('saves/all_summaries_01-15_18:00.json', 'r'))
+    for exp in data:
+        if 'AttDist_adv_steps:1_eps:0.0062' in data[exp].keys():
+            tmp = data[exp].pop('AttDist_adv_steps:1_eps:0.0062')
+            data[exp]['AttDist_adv_steps:1_eps:0.062'] = tmp
+        if 'CKA_adv_steps:1_eps:0.0062' in data[exp].keys():
+            tmp = data[exp].pop('CKA_adv_steps:1_eps:0.0062')
+            data[exp]['CKA_adv_steps:1_eps:0.062'] = tmp
+        if 'CKA_trf_steps:1_eps:0.0062' in data[exp].keys():
+            tmp = data[exp].pop('CKA_trf_steps:1_eps:0.0062')
+            data[exp]['CKA_trf_steps:1_eps:0.062'] = tmp
+        if 'Metrics_adv_steps:1_eps:0.0062' in data[exp].keys():
+            tmp = data[exp].pop('Metrics_adv_steps:1_eps:0.0062')
+            data[exp]['Metrics_adv_steps:1_eps:0.062'] = tmp
+    json.dump(data, open('saves/all_summaries_01-15_18:00.json', 'w'))
