@@ -1,3 +1,4 @@
+from torch.nn.parallel import DistributedDataParallel as NativeDDP
 from models.Custom_T2T import load_custom_t2t_vit
 from torch.utils.tensorboard import SummaryWriter
 from matplotlib.ticker import PercentFormatter
@@ -80,13 +81,13 @@ def get_all_hooks(model, is_t2t=False, is_performer=False):
     hooks = []
     if is_t2t:
         if is_performer:
-            list_targets = ['tokens_to_token.attention1.kqv', 'tokens_to_token.attention1.proj',
-                            'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.kqv',
-                            'tokens_to_token.attention2.proj', 'tokens_to_token.attention2.mlp']
+            list_targets = ['module.tokens_to_token.attention1.kqv', 'module.tokens_to_token.attention1.proj',
+                            'module.tokens_to_token.attention1.mlp', 'module.tokens_to_token.attention2.kqv',
+                            'module.tokens_to_token.attention2.proj', 'module.tokens_to_token.attention2.mlp']
         else:
-            list_targets = ['tokens_to_token.attention1.attn.qkv', 'tokens_to_token.attention1.attn.proj',
-                            'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.attn.qkv',
-                            'tokens_to_token.attention2.attn.proj', 'tokens_to_token.attention2.mlp']
+            list_targets = ['module.tokens_to_token.attention1.attn.qkv', 'module.tokens_to_token.attention1.attn.proj',
+                            'module.tokens_to_token.attention1.mlp', 'module.tokens_to_token.attention2.attn.qkv',
+                            'module.tokens_to_token.attention2.attn.proj', 'module.tokens_to_token.attention2.mlp']
         for tgt in list_targets:
             hook = HookedCache(model.module, tgt)
             hooks.append(hook)
@@ -538,6 +539,8 @@ def get_CKAs(json_summaries, model_1, name_model_1, model_2, name_model_2, loade
         model_2 = timm.create_model(model_2, checkpoint_path=model_2_ckpt_file)
     else:
         model_2 = timm.create_model(model_2, pretrained=True)
+    model_2 = model_2.cuda()
+    model_2 = NativeDDP(model_2, device_ids=[args.local_rank])
 
     get_clean_CKA(json_summaries["CKA_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader, args)
     get_adversarial_CKA(json_summaries, model_1, name_model_1, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
@@ -559,6 +562,8 @@ def get_CKAs_single_element(json_summaries, model_1, name_model_1, model_2, name
         model_2 = timm.create_model(model_2, checkpoint_path=model_2_ckpt_file)
     else:
         model_2 = timm.create_model(model_2, pretrained=True)
+    model_2 = model_2.cuda()
+    model_2 = NativeDDP(model_2, device_ids=[args.local_rank])
 
     get_clean_CKA_single_element(json_summaries["CKA_single_cln"], model_1, name_model_1, model_2.cuda(), name_model_2, loader, args)
     get_adversarial_CKA_single_element(json_summaries, model_1, name_model_1, loader, loss_fn, args, epsilonMax, pgd_steps, step_size=step_size)
