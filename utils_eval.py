@@ -81,17 +81,17 @@ def get_all_hooks(model, is_t2t=False, is_performer=False):
     hooks = []
     if is_t2t:
         if is_performer:
-            list_targets = ['module.tokens_to_token.attention1.kqv', 'module.tokens_to_token.attention1.proj',
-                            'module.tokens_to_token.attention1.mlp', 'module.tokens_to_token.attention2.kqv',
-                            'module.tokens_to_token.attention2.proj', 'module.tokens_to_token.attention2.mlp']
+            list_targets = ['tokens_to_token.attention1.kqv', 'tokens_to_token.attention1.proj',
+                            'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.kqv',
+                            'tokens_to_token.attention2.proj', 'tokens_to_token.attention2.mlp']
         else:
-            list_targets = ['module.tokens_to_token.attention1.attn.qkv', 'module.tokens_to_token.attention1.attn.proj',
-                            'module.tokens_to_token.attention1.mlp', 'module.tokens_to_token.attention2.attn.qkv',
-                            'module.tokens_to_token.attention2.attn.proj', 'module.tokens_to_token.attention2.mlp']
+            list_targets = ['tokens_to_token.attention1.attn.qkv', 'tokens_to_token.attention1.attn.proj',
+                            'tokens_to_token.attention1.mlp', 'tokens_to_token.attention2.attn.qkv',
+                            'tokens_to_token.attention2.attn.proj', 'tokens_to_token.attention2.mlp']
         for tgt in list_targets:
             hook = HookedCache(model.module, tgt)
             hooks.append(hook)
-        hook = HookedCache(model, 'module.tokens_to_token.project')
+        hook = HookedCache(model.module, 'tokens_to_token.project')
         hooks.append(hook)
     for j, block in enumerate(model.module.blocks):
         hook = HookedCache(model.module, 'blocks.{}.attn.qkv'.format(j))
@@ -123,7 +123,6 @@ class HookedCache:
             if name == self.target:
                 self._target = module
                 return
-        print(model)
         raise ValueError('Target {} not found in model'.format(self.target))
 
     def _register_hook(self):
