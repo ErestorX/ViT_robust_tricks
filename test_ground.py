@@ -115,6 +115,7 @@ def recursive_merge_dictionaries(dica, dicb, tree=None):
 
 if __name__ == '__main__':
     json_file = 'output/val/all_summaries.json'
+    attacks = ['_steps:1_epsilon:0.031', '_steps:1_epsilon:0.062', '_steps:40_epsilon:0.001', '_steps:40_epsilon:0.003', '_steps:40_epsilon:0.005']
     # get_top1_val('output/val/', json.load(open(json_file, 'r')))
     # get_CKA_adv_plot('output/val/', json.load(open(json_file, 'r')))
     # func_1('CKA_cln')
