@@ -22,11 +22,11 @@ parser.add_argument('-gpu', default=0, type=int)  # 0 for the RTX A5000 on works
 parser.add_argument('-CKA', action='store_true', default=False)
 parser.add_argument('-CKA_single', action='store_true', default=False)
 parser.add_argument('-all_exp', action='store_true', default=False)
-parser.add_argument("--local_rank", default=0, type=int)
 
 
 def main():
     args = parser.parse_args()
+    args.local_rank = os.environ['LOCAL_RANK']
     args.distributed = False
     if 'WORLD_SIZE' in os.environ:
         args.distributed = int(os.environ['WORLD_SIZE']) > 1
