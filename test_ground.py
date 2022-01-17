@@ -105,9 +105,8 @@ def recursive_merge_dictionaries(dica, dicb, tree=None):
                 pass
             else:
                 print('Conflict: {}'.format('.'.join(tree + [key])))
-                print('    {}'.format(dicb[key]))
-                print('    {}'.format(dica[key]))
-                print('Usinsg value from second dict')
+                # print('    {}'.format(dicb[key]))
+                # print('    {}'.format(dica[key]))
                 dica[key] = dicb[key]
         else:
             dica[key] = dicb[key]
@@ -115,12 +114,13 @@ def recursive_merge_dictionaries(dica, dicb, tree=None):
 
 
 if __name__ == '__main__':
-    # get_top1_val('output/val/', json.load(open('saves/all_summaries_01-11_14:15.json', 'r')))
-    # get_CKA_adv_plot('output/val/', json.load(open('saves/all_summaries_01-11_14:15.json', 'r')))
+    json_file = 'output/val/all_summaries.json'
+    # get_top1_val('output/val/', json.load(open(json_file, 'r')))
+    # get_CKA_adv_plot('output/val/', json.load(open(json_file, 'r')))
     # func_1('CKA_cln')
     # func_2()
-    # plot_cleanacc_vs_advacc(json.load(open('saves/all_summaries_01-11_17:00.json', 'r')))
-    # data = json.load(open('output/val/all_summaries.json', 'r'))
+    # plot_cleanacc_vs_advacc(json.load(open(json_file, 'r')))
+    # data = json.load(open(json_file, 'r'))
     # for exp in data.keys():
     #     metrics_adv = data[exp].pop('Metrics_adv')
     #     CKA_adv = data[exp].pop('CKA_adv')
@@ -129,24 +129,30 @@ if __name__ == '__main__':
     #     data[exp]['CKA_adv_steps:1_eps:0.0062'] = CKA_adv
     #     data[exp]['CKA_trf_steps:1_eps:0.0062'] = CKA_trf
     # json.dump(data, open('output/val/all_summaries.json', 'w'))
-    # dica = json.load(open('output/val/all_summaries.json', 'r'))
-    # dicb = json.load(open('output/val/all_summaries_2.json', 'r'))
-    # dica = recursive_merge_dictionaries(dica, dicb)
-    # json.dump(dica, open('output/val/all_summaries.json', 'w'))
-    # plot_cka_mat(json.load(open('saves/all_summaries_01-15_18:00.json', 'r')), 'CKA_single_trf_steps:40_eps:0.003')
-    # plot_cka_adv(json.load(open('saves/all_summaries_01-15_18:00.json', 'r')), 'CKA_single_adv_steps:40_eps:0.003')
-    data = json.load(open('saves/all_summaries_01-15_18:00.json', 'r'))
-    for exp in data:
-        if 'AttDist_adv_steps:1_eps:0.0062' in data[exp].keys():
-            tmp = data[exp].pop('AttDist_adv_steps:1_eps:0.0062')
-            data[exp]['AttDist_adv_steps:1_eps:0.062'] = tmp
-        if 'CKA_adv_steps:1_eps:0.0062' in data[exp].keys():
-            tmp = data[exp].pop('CKA_adv_steps:1_eps:0.0062')
-            data[exp]['CKA_adv_steps:1_eps:0.062'] = tmp
-        if 'CKA_trf_steps:1_eps:0.0062' in data[exp].keys():
-            tmp = data[exp].pop('CKA_trf_steps:1_eps:0.0062')
-            data[exp]['CKA_trf_steps:1_eps:0.062'] = tmp
-        if 'Metrics_adv_steps:1_eps:0.0062' in data[exp].keys():
-            tmp = data[exp].pop('Metrics_adv_steps:1_eps:0.0062')
-            data[exp]['Metrics_adv_steps:1_eps:0.062'] = tmp
-    json.dump(data, open('saves/all_summaries_01-15_18:00.json', 'w'))
+
+    # plot_cka_mat(json.load(open(json_file, 'r')), 'CKA_single_trf_steps:40_eps:0.003')
+    # plot_cka_adv(json.load(open(json_file, 'r')), 'CKA_single_adv_steps:40_eps:0.003')
+    # data = json.load(open(json_file, 'r'))
+    # for exp in data:
+    #     if 'AttDist_adv_steps:1_eps:0.0062' in data[exp].keys():
+    #         print('Changing key: AttDist_adv_steps:1_eps:0.0062')
+    #         tmp = data[exp].pop('AttDist_adv_steps:1_eps:0.0062')
+    #         data[exp]['AttDist_adv_steps:1_eps:0.062'] = tmp
+    #     if 'CKA_adv_steps:1_eps:0.0062' in data[exp].keys():
+    #         print('Changing key: CKA_adv_steps:1_eps:0.0062')
+    #         tmp = data[exp].pop('CKA_adv_steps:1_eps:0.0062')
+    #         data[exp]['CKA_adv_steps:1_eps:0.062'] = tmp
+    #     if 'CKA_trf_steps:1_eps:0.0062' in data[exp].keys():
+    #         print('Changing key: CKA_trf_steps:1_eps:0.0062')
+    #         tmp = data[exp].pop('CKA_trf_steps:1_eps:0.0062')
+    #         data[exp]['CKA_trf_steps:1_eps:0.062'] = tmp
+    #     if 'Metrics_adv_steps:1_eps:0.0062' in data[exp].keys():
+    #         print('Changing key: Metrics_adv_steps:1_eps:0.0062')
+    #         tmp = data[exp].pop('Metrics_adv_steps:1_eps:0.0062')
+    #         data[exp]['Metrics_adv_steps:1_eps:0.062'] = tmp
+    #     # print(data[exp].keys())
+    # json.dump(data, open(json_file, 'w'))
+    dica = json.load(open('saves/all_summaries_01-17_13:00.json', 'r'))
+    dicb = json.load(open(json_file, 'r'))
+    dica = recursive_merge_dictionaries(dica, dicb)
+    json.dump(dica, open('saves/all_summaries_01-17_13:00.json', 'w'))
