@@ -26,7 +26,7 @@ parser.add_argument('-all_exp', action='store_true', default=False)
 
 def main():
     args = parser.parse_args()
-    args.local_rank = os.environ['LOCAL_RANK']
+    args.local_rank = int(os.environ['LOCAL_RANK'])
     args.distributed = False
     if 'WORLD_SIZE' in os.environ:
         args.distributed = int(os.environ['WORLD_SIZE']) > 1
