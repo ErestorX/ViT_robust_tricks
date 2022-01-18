@@ -5,8 +5,34 @@ import models
 import copy
 import json
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from models.Custom_T2T import load_custom_t2t_vit
 from tabulate import tabulate
+from combine_eval_summaries import *
+
+
+def get_top1_val(data, experiments, model_list):
+    experiments.remove('_steps:40_eps:0.01')
+    if model_list is None:
+        model_list = list(data.keys())
+    cln = np.asarray([data[model]['Metrics_cln']['top1'] for model in model_list])
+    exp_title = ['Clean']
+    per_model_evol = np.reshape(cln, (cln.shape[0], 1))
+    for experiment in experiments:
+        param = experiment.split('_')[1:]
+        param = [float(p.split(':')[-1]) for p in param]
+        steps, eps = param[0], param[1]
+        title = ('FGSM' if steps == 1 else 'PGD') + ' ' + str(eps)
+        exp_title.append(title)
+        experiment = 'Metrics_adv' + experiment
+        adv = np.asarray([data[model][experiment]['top1'] for model in model_list])
+        adv = adv.reshape((adv.shape[0], 1))
+        per_model_evol = np.concatenate((per_model_evol, adv), axis=1)
+    for i in range(per_model_evol.shape[0]):
+        plt.plot(exp_title, per_model_evol[i], label=model_list[i])
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 
 def plot_cka_mat(data, cka_type):
@@ -107,7 +133,7 @@ def recursive_merge_dictionaries(dica, dicb, tree=None):
                 print('Conflict: {}'.format('.'.join(tree + [key])))
                 # print('    {}'.format(dicb[key]))
                 # print('    {}'.format(dica[key]))
-                dica[key] = dicb[key]
+                # dica[key] = dicb[key]
         else:
             dica[key] = dicb[key]
     return dica
@@ -115,24 +141,18 @@ def recursive_merge_dictionaries(dica, dicb, tree=None):
 
 if __name__ == '__main__':
     json_file = 'output/val/all_summaries.json'
-    attacks = ['_steps:1_epsilon:0.031', '_steps:1_epsilon:0.062', '_steps:40_epsilon:0.001', '_steps:40_epsilon:0.003', '_steps:40_epsilon:0.005']
-    # get_top1_val('output/val/', json.load(open(json_file, 'r')))
-    # get_CKA_adv_plot('output/val/', json.load(open(json_file, 'r')))
-    # func_1('CKA_cln')
-    # func_2()
-    # plot_cleanacc_vs_advacc(json.load(open(json_file, 'r')))
-    # data = json.load(open(json_file, 'r'))
-    # for exp in data.keys():
-    #     metrics_adv = data[exp].pop('Metrics_adv')
-    #     CKA_adv = data[exp].pop('CKA_adv')
-    #     CKA_trf = data[exp].pop('CKA_trf')
-    #     data[exp]['Metrics_adv_steps:1_eps:0.0062'] = metrics_adv
-    #     data[exp]['CKA_adv_steps:1_eps:0.0062'] = CKA_adv
-    #     data[exp]['CKA_trf_steps:1_eps:0.0062'] = CKA_trf
-    # json.dump(data, open('output/val/all_summaries.json', 'w'))
+    attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01', '_steps:1_eps:0.031', '_steps:1_eps:0.062']
+    list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5']
 
     # plot_cka_mat(json.load(open(json_file, 'r')), 'CKA_single_trf_steps:40_eps:0.003')
     # plot_cka_adv(json.load(open(json_file, 'r')), 'CKA_single_adv_steps:40_eps:0.003')
+    data = json.load(open(json_file, 'r'))
+    # for m1 in list_models:
+    #     compare_att_distances(data, m1, attacks)
+    compare_att_distances_2(data, 'AttDist_cln', list_models)
+    for a1 in attacks:
+        a1 = 'AttDist_adv' + a1
+        compare_att_distances_2(data, a1, list_models)
     # data = json.load(open(json_file, 'r'))
     # for exp in data:
     #     if 'AttDist_adv_steps:1_eps:0.0062' in data[exp].keys():
@@ -153,7 +173,8 @@ if __name__ == '__main__':
     #         data[exp]['Metrics_adv_steps:1_eps:0.062'] = tmp
     #     # print(data[exp].keys())
     # json.dump(data, open(json_file, 'w'))
-    dica = json.load(open('saves/all_summaries_01-17_13:00.json', 'r'))
-    dicb = json.load(open(json_file, 'r'))
-    dica = recursive_merge_dictionaries(dica, dicb)
-    json.dump(dica, open('saves/all_summaries_01-17_13:00.json', 'w'))
+    # dica = json.load(open('saves/all_summaries_01-17_13:00.json', 'r'))
+    # dicb = json.load(open(json_file, 'r'))
+    # dica = recursive_merge_dictionaries(dica, dicb)
+    # json.dump(dica, open('saves/all_summaries_01-17_13:00.json', 'w'))
+    # get_top1_val(json.load(open(json_file, 'r')), attacks, list_models)
