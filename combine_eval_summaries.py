@@ -28,7 +28,7 @@ def order_exp(val_path, exp_list):
     return exp_list
 
 
-def compare_att_distances(data, model, attacks):
+def compare_att_distances_model(data, model, attacks):
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     list_exp = [data[model]['AttDist_cln']]
     legends = ['Clean']
@@ -72,7 +72,7 @@ def compare_att_distances(data, model, attacks):
     plt.savefig('output/val/AttDist_' + model + '.png')
 
 
-def compare_att_distances_2(data, attack, models):
+def compare_att_distances_attack(data, attack, models):
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     list_exp =[]
     legends = []
@@ -133,10 +133,10 @@ def main():
     get_top1_val(data)
     exp = list(data.keys())
     for e1 in exp:
-        compare_att_distances(data, e1)
+        compare_att_distances_model(data, e1)
         for e2 in exp:
-            compare_att_distances_2(data, e1, e2)
-            compare_att_distances_2(data, e1, e2, adv_ds='AttDist_trf_steps:1_eps:0.062')
+            compare_att_distances_attack(data, e1, e2)
+            compare_att_distances_attack(data, e1, e2, adv_ds='AttDist_trf_steps:1_eps:0.062')
 
 
 if __name__ == '__main__':

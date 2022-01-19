@@ -12,7 +12,6 @@ from combine_eval_summaries import *
 
 
 def get_top1_val(data, experiments, model_list):
-    experiments.remove('_steps:40_eps:0.01')
     if model_list is None:
         model_list = list(data.keys())
     cln = np.asarray([data[model]['Metrics_cln']['top1'] for model in model_list])
@@ -32,7 +31,7 @@ def get_top1_val(data, experiments, model_list):
         plt.plot(exp_title, per_model_evol[i], label=model_list[i])
     plt.legend()
     plt.tight_layout()
-    plt.show()
+    plt.savefig('output/val/accuracies.png')
 
 
 def plot_cka_mat(data, cka_type):
@@ -146,35 +145,15 @@ if __name__ == '__main__':
 
     # plot_cka_mat(json.load(open(json_file, 'r')), 'CKA_single_trf_steps:40_eps:0.003')
     # plot_cka_adv(json.load(open(json_file, 'r')), 'CKA_single_adv_steps:40_eps:0.003')
-    data = json.load(open(json_file, 'r'))
-    # for m1 in list_models:
-    #     compare_att_distances(data, m1, attacks)
-    compare_att_distances_2(data, 'AttDist_cln', list_models)
-    for a1 in attacks:
-        a1 = 'AttDist_adv' + a1
-        compare_att_distances_2(data, a1, list_models)
     # data = json.load(open(json_file, 'r'))
-    # for exp in data:
-    #     if 'AttDist_adv_steps:1_eps:0.0062' in data[exp].keys():
-    #         print('Changing key: AttDist_adv_steps:1_eps:0.0062')
-    #         tmp = data[exp].pop('AttDist_adv_steps:1_eps:0.0062')
-    #         data[exp]['AttDist_adv_steps:1_eps:0.062'] = tmp
-    #     if 'CKA_adv_steps:1_eps:0.0062' in data[exp].keys():
-    #         print('Changing key: CKA_adv_steps:1_eps:0.0062')
-    #         tmp = data[exp].pop('CKA_adv_steps:1_eps:0.0062')
-    #         data[exp]['CKA_adv_steps:1_eps:0.062'] = tmp
-    #     if 'CKA_trf_steps:1_eps:0.0062' in data[exp].keys():
-    #         print('Changing key: CKA_trf_steps:1_eps:0.0062')
-    #         tmp = data[exp].pop('CKA_trf_steps:1_eps:0.0062')
-    #         data[exp]['CKA_trf_steps:1_eps:0.062'] = tmp
-    #     if 'Metrics_adv_steps:1_eps:0.0062' in data[exp].keys():
-    #         print('Changing key: Metrics_adv_steps:1_eps:0.0062')
-    #         tmp = data[exp].pop('Metrics_adv_steps:1_eps:0.0062')
-    #         data[exp]['Metrics_adv_steps:1_eps:0.062'] = tmp
-    #     # print(data[exp].keys())
-    # json.dump(data, open(json_file, 'w'))
+    # for m1 in list_models:
+    #     compare_att_distances_model(data, m1, attacks)
+    # compare_att_distances_attack(data, 'AttDist_cln', list_models)
+    # for a1 in attacks:
+    #     a1 = 'AttDist_adv' + a1
+    #     compare_att_distances_attack(data, a1, list_models)
     # dica = json.load(open('saves/all_summaries_01-17_13:00.json', 'r'))
     # dicb = json.load(open(json_file, 'r'))
     # dica = recursive_merge_dictionaries(dica, dicb)
-    # json.dump(dica, open('saves/all_summaries_01-17_13:00.json', 'w'))
-    # get_top1_val(json.load(open(json_file, 'r')), attacks, list_models)
+    # json.dump(dica, open('output/val/all_summaries.json', 'w'))
+    get_top1_val(json.load(open(json_file, 'r')), attacks, list_models)
