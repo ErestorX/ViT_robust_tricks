@@ -66,7 +66,7 @@ default_cfgs = {
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., threshold=4, do_mode='exp', block_pos=10):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., threshold=4, do_mode='exp', block_pos=10, exp_mul=0.25):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -75,7 +75,7 @@ class Attention(nn.Module):
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
-        self.proj_drop = CustomDropout(mode=do_mode, threshold=threshold, layer=block_pos)
+        self.proj_drop = CustomDropout(mode=do_mode, threshold=threshold, layer=block_pos, exp_mul=exp_mul)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -95,10 +95,10 @@ class Attention(nn.Module):
 class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, do_mode='exp', threshold=4, block_pos=10):
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, do_mode='exp', threshold=4, block_pos=10, exp_mul=0.25):
         super().__init__()
         self.norm1 = norm_layer(dim)
-        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, threshold=threshold, do_mode=do_mode, block_pos=block_pos)
+        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, threshold=threshold, do_mode=do_mode, block_pos=block_pos, exp_mul=exp_mul)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -122,7 +122,7 @@ class VisionTransformer(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=True, representation_size=None, distilled=False,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., embed_layer=PatchEmbed, norm_layer=None,
-                 act_layer=None, weight_init='', per_layer_do=False):
+                 act_layer=None, weight_init='', per_layer_do=False, exp_mul=0.25):
         """
         Args:
             img_size (int, tuple): input image size
@@ -165,7 +165,7 @@ class VisionTransformer(nn.Module):
         self.blocks = nn.Sequential(*[
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer, do_mode=self.do_mode, threshold=threshold, block_pos=i+1 if per_layer_do else 10)
+                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer, do_mode=self.do_mode, threshold=threshold, block_pos=i+1 if per_layer_do else 10, exp_mul=exp_mul)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
 
@@ -439,7 +439,7 @@ def _create_vision_transformer(variant, pretrained=False, default_cfg=None, **kw
 def custom_vit_tiny_patch16_224(pretrained=False, **kwargs):
     """ ViT-Tiny (Vit-Ti/16)
     """
-    model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, per_layer_do=True, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, per_layer_do=True, exp_mul=0.25, **kwargs)
     model = _create_vision_transformer('custom_vit_tiny_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
 
@@ -449,7 +449,7 @@ def custom_vit_small_patch16_224(pretrained=False, **kwargs):
     """ ViT-Small (ViT-S/16)
     NOTE I've replaced my previous 'small' model definition and weights with the small variant from the DeiT paper
     """
-    model_kwargs = dict(patch_size=16, embed_dim=384, depth=12, num_heads=6, per_layer_do=True, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=384, depth=12, num_heads=6, per_layer_do=True, exp_mul=0.25, **kwargs)
     model = _create_vision_transformer('custom_vit_small_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
 
@@ -458,7 +458,7 @@ def custom_vit_small_patch16_224(pretrained=False, **kwargs):
 def custom_vit_small_patch32_224(pretrained=False, **kwargs):
     """ ViT-Small (ViT-S/32)
     """
-    model_kwargs = dict(patch_size=32, embed_dim=384, depth=12, num_heads=6, per_layer_do=True, **kwargs)
+    model_kwargs = dict(patch_size=32, embed_dim=384, depth=12, num_heads=6, per_layer_do=True, exp_mul=0.25, **kwargs)
     model = _create_vision_transformer('custom_vit_small_patch32_224', pretrained=pretrained, **model_kwargs)
     return model
 
@@ -468,7 +468,7 @@ def custom_vit_base_patch16_224(pretrained=False, **kwargs):
     """ ViT-Base (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, per_layer_do=True, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, per_layer_do=True, exp_mul=0.25, **kwargs)
     model = _create_vision_transformer('custom_vit_base_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
 
@@ -478,6 +478,6 @@ def custom_vit_base_patch32_224(pretrained=False, **kwargs):
     """ ViT-Base (ViT-B/32) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=32, embed_dim=768, depth=12, num_heads=12, per_layer_do=True, **kwargs)
+    model_kwargs = dict(patch_size=32, embed_dim=768, depth=12, num_heads=12, per_layer_do=True, exp_mul=0.25, **kwargs)
     model = _create_vision_transformer('custom_vit_base_patch32_224', pretrained=pretrained, **model_kwargs)
     return model

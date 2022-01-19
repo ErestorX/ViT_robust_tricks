@@ -121,11 +121,19 @@ def compare_att_distances_attack(data, attack, models):
 
 
 def get_top1_val(data):
-    exp_list = data.keys()
-    clean_top1 = [data[exp]['Metrics_cln']['top1'] for exp in exp_list]
-    adv_top1 = [data[exp]['Metrics_adv']['top1'] for exp in exp_list]
-    table = [[exp, cln, adv] for exp, cln, adv in zip(exp_list, clean_top1, adv_top1)]
-    print(tabulate(table, headers=['Model', 'Clean top1', 'Adversarial top1']))
+    list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5']
+    attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01',
+               '_steps:1_eps:0.031', '_steps:1_eps:0.062']
+    list_top1 = [[data[exp]['Metrics_cln']['top1'] for exp in list_models]]
+    attack_names = ['Clean data']
+    for a in attacks:
+        list_top1.append([data[exp]['Metrics_adv'+a]['top1'] for exp in list_models])
+        attack_name = [p.split(':')[1] for p in a.split('_')[1:]]
+        attack_names.append(('FGSM' if attack_name[0] == '1' else 'PGD') + '_' + attack_name[1])
+    list_top1 = np.asarray(list_top1).swapaxes(0, 1)
+    list_top1 = list_top1.tolist()
+    table = [[exp] + val for exp, val in zip(list_models, list_top1)]
+    print(tabulate(table, headers=['Model']+attack_names))
 
 
 def main():
@@ -140,4 +148,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    data = json.load(open('saves/all_summaries_01-19_10:30.json', 'r'))
+    get_top1_val(data)

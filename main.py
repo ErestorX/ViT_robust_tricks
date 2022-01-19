@@ -306,13 +306,6 @@ def _parse_args():
     # The main arg parser parses the rest of the args, the usual
     # defaults will have been overridden if config file specified.
     args = parser.parse_args(remaining)
-    if args.model.split("_")[1] == 'base':
-        print("Loading training args for vit_base models")
-        args.mixup = 0.5
-        args.aa = 'rand-m15-n2'
-        args.drop = 0.1
-        args.drop_path = 0.1
-        args.dr = 0.03
     if args.custom:
         args.model = 'custom_' + args.model
 
