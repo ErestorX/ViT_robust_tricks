@@ -1,17 +1,16 @@
-import combine_eval_summaries
 import numpy as np
-import random
-import models
-import copy
-import json
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from models.Custom_T2T import load_custom_t2t_vit
-from tabulate import tabulate
+
 from combine_eval_summaries import *
 
 
 def get_top1_val(data, experiments, model_list):
+    t2t_blue = ['midnightblue', 'mediumblue', 'blue', 'mediumslateblue', 'darkorchid', 'fuchsia', 'violet', 'hotpink',
+                'pink']
+    t2t_blue.reverse()
+    blue_id = 0
+    vit_green = ['darkgreen', 'green', 'limegreen', 'mediumseagreen', 'aqquamarine', 'turquoise', 'paleturquoise',
+                 'lightseagreen', 'darkcyan']
+    green_id = 0
     if model_list is None:
         model_list = list(data.keys())
     cln = np.asarray([data[model]['Metrics_cln']['top1'] for model in model_list])
@@ -28,10 +27,18 @@ def get_top1_val(data, experiments, model_list):
         adv = adv.reshape((adv.shape[0], 1))
         per_model_evol = np.concatenate((per_model_evol, adv), axis=1)
     for i in range(per_model_evol.shape[0]):
-        plt.plot(exp_title, per_model_evol[i], label=model_list[i])
+        if 't2t' in model_list[i]:
+            color = t2t_blue[blue_id]
+            blue_id += 1
+        else:
+            color = vit_green[green_id]
+            green_id += 1
+        plt.plot(exp_title, per_model_evol[i], label=model_list[i], color=color)
+    plt.axvline(x=exp_title[1], color='gray', linestyle='--', alpha=0.5)
+    plt.axvline(x=exp_title[5], color='gray', linestyle='--', alpha=0.5)
     plt.legend()
     plt.tight_layout()
-    plt.savefig('output/val/accuracies.png')
+    plt.savefig('output/val/Clean_vs_Adversarial_acc.png')
 
 
 def plot_cka_mat(data, cka_type):
@@ -138,14 +145,92 @@ def recursive_merge_dictionaries(dica, dicb, tree=None):
     return dica
 
 
+def AttDist_vs_top1(data, attack, list_models):
+    t2t_blue = ['midnightblue', 'mediumblue', 'blue', 'mediumslateblue', 'darkorchid', 'fuchsia', 'violet', 'hotpink',
+                'pink']
+    t2t_blue.reverse()
+    blue_id = 0
+    vit_green = ['darkgreen', 'green', 'limegreen', 'mediumseagreen', 'aquamarine', 'turquoise', 'paleturquoise',
+                 'lightseagreen', 'darkcyan']
+    green_id = 0
+    t2t_block_ckpt = [2, 4, 5, 7, 9, 10, -1]
+    vit_block_ckpt = [0, 2, 3, 5, 7, 8, -1]
+    colors = []
+    top1 = []
+    AttDist = []
+    for model in list_models:
+        top1.append(data[model]['Metrics'+attack]['top1'])
+        dist = data[model]['AttDist' + attack]
+        AttDist.append(dist)
+        if 't2t' in model:
+            colors.append(t2t_blue[blue_id])
+            blue_id += 1
+        else:
+            colors.append(vit_green[green_id])
+            green_id += 1
+    data_figs = {'block_t2t':{}, 'final_block':{}}
+    for id in vit_block_ckpt[:-1]:
+        data_figs['block_'+str(id)] = {}
+    for model, acc, dist in zip(list_models, top1, AttDist):
+        if 't2t' in model:
+            data_figs['block_t2t'][model] = [acc, dist[0]]
+            for block_id in t2t_block_ckpt:
+                if block_id == -1:
+                    data_figs['final_block'][model] = [acc, dist[block_id]]
+                else:
+                    data_figs['block_'+str(block_id-2)][model] = [acc, dist[block_id]]
+        else:
+            for block_id in vit_block_ckpt:
+                if block_id == -1:
+                    data_figs['final_block'][model] = [acc, dist[block_id]]
+                else:
+                    data_figs['block_'+str(block_id)][model] = [acc, dist[block_id]]
+    for block in data_figs.keys():
+        fig, ax = plt.subplots(figsize=(10, 5))
+        if attack == '_cln':
+            type_attack = 'Clean'
+        else:
+            params = [x.split(':')[1] for x in attack.split('_')[2:]]
+            type_attack = ('FGSM' if params[0] == '1' else 'PGD') + '_' + params[1]
+        plt.title('Accuracy '+type_attack+' vs Attention distance on ' + block)
+        acc = []
+        distance_points = []
+        legends = []
+        if block == 'block_t2t':
+            for model in data_figs[block].keys():
+                acc.append(round(data_figs[block][model][0], 2))
+                distance_points.append(data_figs[block][model][1])
+                legends.append(model)
+            bp = ax.boxplot(distance_points, positions=acc, vert=False, patch_artist=True, widths=1.5)
+            for patch, color in zip(bp['boxes'], t2t_blue[:blue_id]):
+                patch.set(facecolor=color)
+        else:
+            for model in data_figs[block].keys():
+                acc.append(round(data_figs[block][model][0], 2))
+                distance_points.append(data_figs[block][model][1])
+                legends.append(model)
+            bp = ax.boxplot(distance_points, positions=acc, vert=False, patch_artist=True, widths=1.5)
+            for patch, color in zip(bp['boxes'], colors):
+                patch.set(facecolor=color)
+        ax.legend(bp['boxes'], legends, loc='lower right')
+        ax.set_ylabel('Accuracy')
+        ax.set_xlabel('Attention distance')
+        ax.set_yticks(acc + np.arange(0, 101, 10).tolist(), acc + np.arange(0, 101, 10).tolist())
+        ax.set_xticks(np.arange(0, 226, 25))
+        plt.tight_layout()
+        plt.savefig('output/val/Acc_'+type_attack+'_vs_AttDist_' + block + '.png')
+
+
+
+
 if __name__ == '__main__':
-    json_file = 'output/val/all_summaries.json'
+    json_file = 'saves/all_summaries_01-19_10:30.json'
     attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01', '_steps:1_eps:0.031', '_steps:1_eps:0.062']
     list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5']
 
     # plot_cka_mat(json.load(open(json_file, 'r')), 'CKA_single_trf_steps:40_eps:0.003')
     # plot_cka_adv(json.load(open(json_file, 'r')), 'CKA_single_adv_steps:40_eps:0.003')
-    # data = json.load(open(json_file, 'r'))
+    data = json.load(open(json_file, 'r'))
     # for m1 in list_models:
     #     compare_att_distances_model(data, m1, attacks)
     # compare_att_distances_attack(data, 'AttDist_cln', list_models)
@@ -156,4 +241,7 @@ if __name__ == '__main__':
     # dicb = json.load(open(json_file, 'r'))
     # dica = recursive_merge_dictionaries(dica, dicb)
     # json.dump(dica, open('output/val/all_summaries.json', 'w'))
-    get_top1_val(json.load(open(json_file, 'r')), attacks, list_models)
+    # get_top1_val(json.load(open(json_file, 'r')), attacks, list_models)
+    AttDist_vs_top1(data, '_cln', list_models)
+    for a1 in attacks:
+        AttDist_vs_top1(data, '_adv'+a1, list_models)

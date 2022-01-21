@@ -77,6 +77,9 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = CustomDropout(mode=do_mode, threshold=threshold, layer=block_pos, exp_mul=exp_mul)
 
+    def set_do_param(self, do_param):
+        self.proj_drop.exp_mul = do_param
+
     def forward(self, x):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -150,6 +153,7 @@ class VisionTransformer(nn.Module):
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         act_layer = act_layer or nn.GELU
         self.do_mode = 'exp'
+        self.exp_mul = exp_mul
         threshold = 4 if patch_size == 16 else 2
 
         self.patch_embed = embed_layer(
@@ -165,7 +169,7 @@ class VisionTransformer(nn.Module):
         self.blocks = nn.Sequential(*[
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer, do_mode=self.do_mode, threshold=threshold, block_pos=i+1 if per_layer_do else 10, exp_mul=exp_mul)
+                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer, do_mode=self.do_mode, threshold=threshold, block_pos=i+1 if per_layer_do else 10, exp_mul=self.exp_mul)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
 
@@ -203,6 +207,11 @@ class VisionTransformer(nn.Module):
     def _init_weights(self, m):
         # this fn left here for compat with downstream users
         _init_vit_weights(m)
+
+    def set_do_param(self, do_param):
+        self.exp_mul = do_param
+        for block in self.blocks:
+            block.attn.set_do_param(do_param)
 
     @torch.jit.ignore()
     def load_pretrained(self, checkpoint_path, prefix=''):

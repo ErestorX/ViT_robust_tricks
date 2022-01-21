@@ -293,6 +293,8 @@ parser.add_argument('--custom', action='store_true', default=False,
                     help='switch from using custom model to original timm model')
 parser.add_argument('--custom_do', default='exp', type=str,
                     help='change the mode of the variable dropout')
+parser.add_argument('--custom_do_param', default=0.5, type=float,
+                    help='set the dropout parameter')
 
 
 def _parse_args():
@@ -378,6 +380,7 @@ def main():
         checkpoint_path=args.initial_checkpoint)
     if args.custom:
         model.do_mode = args.custom_do
+        model.set_do_param(args.custom_do_param)
 
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'

@@ -29,7 +29,7 @@ default_cfgs = {
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, in_dim=None, qkv_bias=False, qk_scale=None, attn_drop=0.):
+    def __init__(self, dim, num_heads=8, in_dim=None, qkv_bias=False, qk_scale=None, attn_drop=0., exp_mul=0.25):
         super().__init__()
         self.num_heads = num_heads
         self.in_dim = in_dim
@@ -39,7 +39,7 @@ class Attention(nn.Module):
         self.qkv = nn.Linear(dim, in_dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(in_dim, in_dim)
-        self.proj_drop = CustomDropout(layer=1)
+        self.proj_drop = CustomDropout(layer=1, exp_mul=exp_mul)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -62,12 +62,12 @@ class Attention(nn.Module):
 
 
 class Token_performer(nn.Module):
-    def __init__(self, dim, in_dim, head_cnt=1, kernel_ratio=0.5, dp1=0.1, dp2 = 0.1):
+    def __init__(self, dim, in_dim, head_cnt=1, kernel_ratio=0.5, dp1=0.1, dp2 = 0.1, exp_mul=0.25):
         super().__init__()
         self.emb = in_dim * head_cnt # we use 1, so it is no need here
         self.kqv = nn.Linear(dim, 3 * self.emb)
         # self.dp = nn.Dropout(dp1)
-        self.dp = CustomDropout(layer=1)
+        self.dp = CustomDropout(layer=1, exp_mul=exp_mul)
         self.proj = nn.Linear(self.emb, self.emb)
         self.head_cnt = head_cnt
         self.norm1 = nn.LayerNorm(dim)
@@ -84,6 +84,9 @@ class Token_performer(nn.Module):
         self.m = int(self.emb * kernel_ratio)
         self.w = torch.randn(self.m, self.emb)
         self.w = nn.Parameter(nn.init.orthogonal_(self.w) * math.sqrt(self.m), requires_grad=False)
+
+    def set_do_param(self, do_param):
+        self.dp.exp_mul = do_param
 
     def prm_exp(self, x):
         # part of the function is borrow from https://github.com/lucidrains/performer-pytorch
@@ -121,14 +124,17 @@ class Token_performer(nn.Module):
 class Token_transformer(nn.Module):
 
     def __init__(self, dim, in_dim, num_heads, mlp_ratio=1., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, exp_mul=0.25):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.attn = Attention(
-            dim, in_dim=in_dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop)
+            dim, in_dim=in_dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, exp_mul=exp_mul)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(in_dim)
         self.mlp = Mlp(in_features=in_dim, hidden_features=int(in_dim*mlp_ratio), out_features=in_dim, act_layer=act_layer, drop=drop)
+
+    def set_do_param(self, do_param):
+        self.attn.proj_drop.exp_mul = do_param
 
     def forward(self, x):
         x = self.attn(self.norm1(x))
@@ -140,7 +146,7 @@ class T2T_module(nn.Module):
     """
     Tokens-to-Token encoding module
     """
-    def __init__(self, img_size=224, tokens_type='performer', in_chans=3, embed_dim=768, token_dim=64):
+    def __init__(self, img_size=224, tokens_type='performer', in_chans=3, embed_dim=768, token_dim=64, exp_mul=0.25):
         super().__init__()
 
         if tokens_type == 'transformer':
@@ -148,8 +154,8 @@ class T2T_module(nn.Module):
             self.soft_split1 = nn.Unfold(kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
             self.soft_split2 = nn.Unfold(kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
 
-            self.attention1 = Token_transformer(dim=in_chans * 7 * 7, in_dim=token_dim, num_heads=1, mlp_ratio=1.0)
-            self.attention2 = Token_transformer(dim=token_dim * 3 * 3, in_dim=token_dim, num_heads=1, mlp_ratio=1.0)
+            self.attention1 = Token_transformer(dim=in_chans * 7 * 7, in_dim=token_dim, num_heads=1, mlp_ratio=1.0, exp_mul=exp_mul)
+            self.attention2 = Token_transformer(dim=token_dim * 3 * 3, in_dim=token_dim, num_heads=1, mlp_ratio=1.0, exp_mul=exp_mul)
             self.project = nn.Linear(token_dim * 3 * 3, embed_dim)
 
         elif tokens_type == 'performer':
@@ -159,8 +165,8 @@ class T2T_module(nn.Module):
 
             #self.attention1 = Token_performer(dim=token_dim, in_dim=in_chans*7*7, kernel_ratio=0.5)
             #self.attention2 = Token_performer(dim=token_dim, in_dim=token_dim*3*3, kernel_ratio=0.5)
-            self.attention1 = Token_performer(dim=in_chans*7*7, in_dim=token_dim, kernel_ratio=0.5)
-            self.attention2 = Token_performer(dim=token_dim*3*3, in_dim=token_dim, kernel_ratio=0.5)
+            self.attention1 = Token_performer(dim=in_chans*7*7, in_dim=token_dim, kernel_ratio=0.5, exp_mul=exp_mul)
+            self.attention2 = Token_performer(dim=token_dim*3*3, in_dim=token_dim, kernel_ratio=0.5, exp_mul=exp_mul)
             self.project = nn.Linear(token_dim * 3 * 3, embed_dim)
 
         elif tokens_type == 'convolution':  # just for comparison with conolution, not our model
@@ -170,6 +176,10 @@ class T2T_module(nn.Module):
             self.project = nn.Conv2d(token_dim, embed_dim, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)) # the 3rd convolution
 
         self.num_patches = (img_size // (4 * 2 * 2)) * (img_size // (4 * 2 * 2))  # there are 3 sfot split, stride are 4,2,2 seperately
+
+    def set_do_param(self, do_param):
+        self.attention1.set_do_param(do_param)
+        self.attention2.set_do_param(do_param)
 
     def forward(self, x):
         # step0: soft split
@@ -198,14 +208,15 @@ class T2T_module(nn.Module):
 class T2T_ViT(nn.Module):
     def __init__(self, img_size=224, tokens_type='performer', in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, token_dim=64, per_layer_do=False):
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, token_dim=64, per_layer_do=False, exp_mul=0.25):
         super().__init__()
         self.do_mode = 'exp'
+        self.exp_mul = exp_mul
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
 
         self.tokens_to_token = T2T_module(
-                img_size=img_size, tokens_type=tokens_type, in_chans=in_chans, embed_dim=embed_dim, token_dim=token_dim)
+                img_size=img_size, tokens_type=tokens_type, in_chans=in_chans, embed_dim=embed_dim, token_dim=token_dim, exp_mul=self.exp_mul)
         num_patches = self.tokens_to_token.num_patches
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -216,7 +227,7 @@ class T2T_ViT(nn.Module):
         self.blocks = nn.ModuleList([
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, block_pos=i+1 if per_layer_do else 10)
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, block_pos=i+1 if per_layer_do else 10, exp_mul=self.exp_mul)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
 
@@ -234,6 +245,12 @@ class T2T_ViT(nn.Module):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+
+    def set_do_param(self, do_param):
+        self.exp_mul = do_param
+        self.tokens_to_token.set_do_param(do_param)
+        for block in self.blocks:
+            block.set_do_param(do_param)
 
     @torch.jit.ignore
     def no_weight_decay(self):

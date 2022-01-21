@@ -29,7 +29,11 @@ def order_exp(val_path, exp_list):
 
 
 def compare_att_distances_model(data, model, attacks):
-    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
+    FGSM_blue = ['midnightblue', 'mediumblue', 'blue', 'mediumslateblue', 'darkorchid', 'fushia', 'violet', 'hotpink', 'pink']
+    blue_id = 0
+    PGD_green = ['darkgreen', 'green', 'limegreen', 'mediumseagreen', 'aqquamarine', 'turquoise', 'paleturquoise', 'lightseagreen', 'darkcyan']
+    green_id = 0
+    colors = []
     list_exp = [data[model]['AttDist_cln']]
     legends = ['Clean']
     for attack in attacks:
@@ -38,10 +42,15 @@ def compare_att_distances_model(data, model, attacks):
             param = attack.split('_')[1:]
             param = [float(p.split(':')[-1]) for p in param]
             steps, eps = param[0], param[1]
+            if steps == 1:
+                colors.append(FGSM_blue[blue_id])
+                blue_id += 1
+            else:
+                colors.append(PGD_green[green_id])
+                green_id += 1
             title = ('FGSM' if steps == 1 else 'PGD') + ' ' + str(eps)
             legends.append(title)
     nb_exp = len(list_exp)
-    colors = colors[:nb_exp]
     list_blocks = []
     block_width = 0.8/nb_exp
     if 't2t' in model:
@@ -73,7 +82,13 @@ def compare_att_distances_model(data, model, attacks):
 
 
 def compare_att_distances_attack(data, attack, models):
-    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
+    t2t_blue = ['midnightblue', 'mediumblue', 'blue', 'mediumslateblue', 'darkorchid', 'fushia', 'violet', 'hotpink',
+                 'pink']
+    blue_id = 0
+    vit_green = ['darkgreen', 'green', 'limegreen', 'mediumseagreen', 'aqquamarine', 'turquoise', 'paleturquoise',
+                 'lightseagreen', 'darkcyan']
+    green_id = 0
+    colors = []
     list_exp =[]
     legends = []
     for model in models:
@@ -89,8 +104,12 @@ def compare_att_distances_attack(data, attack, models):
         if 't2t' in legends[i]:
             t2t = True
             list_blocks.append(np.arange(-2 + (i * block_width), len(list_exp[i]) - 2 + (i * block_width), 1.0))
+            colors.append(t2t_blue[blue_id])
+            blue_id += 1
         else:
             list_blocks.append(np.arange(0 + (i * block_width), len(list_exp[i]) + (i * block_width), 1.0))
+            colors.append(vit_green[green_id])
+            green_id += 1
     fig, ax = plt.subplots(figsize=(10, 5))
     if attack == 'AttDist_cln':
         title = 'Clean data'
@@ -137,17 +156,9 @@ def get_top1_val(data):
 
 
 def main():
-    data = json.load(open('saves/all_summaries_01-11_17:00.json', 'r'))
+    data = json.load(open('saves/all_summaries_01-19_10:30.json', 'r'))
     get_top1_val(data)
-    exp = list(data.keys())
-    for e1 in exp:
-        compare_att_distances_model(data, e1)
-        for e2 in exp:
-            compare_att_distances_attack(data, e1, e2)
-            compare_att_distances_attack(data, e1, e2, adv_ds='AttDist_trf_steps:1_eps:0.062')
 
 
 if __name__ == '__main__':
-    # main()
-    data = json.load(open('saves/all_summaries_01-19_10:30.json', 'r'))
-    get_top1_val(data)
+    main()
