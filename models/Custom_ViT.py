@@ -77,7 +77,8 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = CustomDropout(mode=do_mode, threshold=threshold, layer=block_pos, exp_mul=exp_mul)
 
-    def set_do_param(self, do_param):
+    def set_do_param(self, do_mode, do_param):
+        self.proj_drop.mode = do_mode
         self.proj_drop.exp_mul = do_param
 
     def forward(self, x):
@@ -208,10 +209,11 @@ class VisionTransformer(nn.Module):
         # this fn left here for compat with downstream users
         _init_vit_weights(m)
 
-    def set_do_param(self, do_param):
+    def set_do_param(self, do_mode, do_param):
+        self.do_mode = do_mode
         self.exp_mul = do_param
         for block in self.blocks:
-            block.attn.set_do_param(do_param)
+            block.attn.set_do_param(do_mode, do_param)
 
     @torch.jit.ignore()
     def load_pretrained(self, checkpoint_path, prefix=''):

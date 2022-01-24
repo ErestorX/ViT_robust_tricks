@@ -85,7 +85,8 @@ class Token_performer(nn.Module):
         self.w = torch.randn(self.m, self.emb)
         self.w = nn.Parameter(nn.init.orthogonal_(self.w) * math.sqrt(self.m), requires_grad=False)
 
-    def set_do_param(self, do_param):
+    def set_do_param(self, do_mode, do_param):
+        self.dp.mode = do_mode
         self.dp.exp_mul = do_param
 
     def prm_exp(self, x):
@@ -177,9 +178,9 @@ class T2T_module(nn.Module):
 
         self.num_patches = (img_size // (4 * 2 * 2)) * (img_size // (4 * 2 * 2))  # there are 3 sfot split, stride are 4,2,2 seperately
 
-    def set_do_param(self, do_param):
-        self.attention1.set_do_param(do_param)
-        self.attention2.set_do_param(do_param)
+    def set_do_param(self, do_mode, do_param):
+        self.attention1.set_do_param(do_mode, do_param)
+        self.attention2.set_do_param(do_mode, do_param)
 
     def forward(self, x):
         # step0: soft split
@@ -246,11 +247,12 @@ class T2T_ViT(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def set_do_param(self, do_param):
+    def set_do_param(self, do_mode, do_param):
+        self.do_mode = do_mode
         self.exp_mul = do_param
-        self.tokens_to_token.set_do_param(do_param)
+        self.tokens_to_token.set_do_param(do_mode, do_param)
         for block in self.blocks:
-            block.set_do_param(do_param)
+            block.set_do_param(do_mode, do_param)
 
     @torch.jit.ignore
     def no_weight_decay(self):

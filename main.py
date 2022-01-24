@@ -254,8 +254,8 @@ parser.add_argument('--log-interval', type=int, default=104, metavar='N',
                     help='how many batches to wait before logging training status')
 parser.add_argument('--recovery-interval', type=int, default=0, metavar='N',
                     help='how many batches to wait before writing recovery checkpoint')
-parser.add_argument('--checkpoint-hist', type=int, default=10, metavar='N',
-                    help='number of checkpoints to keep (default: 10)')
+parser.add_argument('--checkpoint-hist', type=int, default=5, metavar='N',
+                    help='number of checkpoints to keep (default: 5)')
 parser.add_argument('-j', '--workers', type=int, default=6, metavar='N',
                     help='how many training processes to use (default: 4)')
 parser.add_argument('--save-images', action='store_true', default=False,
@@ -379,8 +379,7 @@ def main():
         scriptable=args.torchscript,
         checkpoint_path=args.initial_checkpoint)
     if args.custom:
-        model.do_mode = args.custom_do
-        model.set_do_param(args.custom_do_param)
+        model.set_do_param(args.custom_do, args.custom_do_param)
 
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
@@ -596,6 +595,8 @@ def main():
             exp_name = args.experiment
         else:
             exp_name = '-'.join([datetime.now().strftime("%m-%d_%H:%M"), safe_model_name(args.model)])
+            if args.custom:
+                exp_name = '-'.join([exp_name, args.custom_do, args.custom_do_param])
         output_dir = get_outdir(args.output if args.output else './output/train', exp_name)
         decreasing = True if eval_metric == 'loss' else False
         saver = CheckpointSaver(

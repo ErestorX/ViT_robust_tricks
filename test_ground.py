@@ -218,7 +218,7 @@ def AttDist_vs_top1(data, attack, list_models):
         ax.set_yticks(acc + np.arange(0, 101, 10).tolist(), acc + np.arange(0, 101, 10).tolist())
         ax.set_xticks(np.arange(0, 226, 25))
         plt.tight_layout()
-        plt.savefig('output/val/Acc_'+type_attack+'_vs_AttDist_' + block + '.png')
+        plt.savefig('output/val/plots/Acc_'+type_attack+'_vs_AttDist_' + block + '.png')
 
 
 

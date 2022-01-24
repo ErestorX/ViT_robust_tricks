@@ -53,7 +53,8 @@ class Block(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-    def set_do_param(self, do_param):
+    def set_do_param(self, do_mode, do_param):
+        self.attn.proj_drop.mode = do_mode
         self.attn.proj_drop.exp_mul = do_param
 
     def forward(self, x):

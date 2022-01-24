@@ -9,7 +9,7 @@ bn_eps: null
 bn_momentum: null
 bn_tf: false
 channels_last: false
-checkpoint_hist: 10
+checkpoint_hist: 5
 clip_grad: 1.0
 clip_mode: norm
 color_jitter: 0.4
