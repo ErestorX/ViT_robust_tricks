@@ -83,34 +83,6 @@ def plot_cka_adv(data, cka_type):
     plt.savefig('output/val/plots/' + cka_type + '.png')
 
 
-def summarize_dists(val_path, data, adv_ds=False):
-    key_dist = 'AttDist_adv' if adv_ds else 'AttDist_cln'
-    exp_list = ['t2t_vit_14_p', 't2t_vit_14_t', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
-                'vit_base_patch32_224_scratch', 'vit_small_patch16_224_pretrained', 'vit_small_patch32_224_pretrained',
-                'vit_tiny_patch16_224_pretrained', 'vit_tiny_patch16_224_scratch']
-    exp_list = [exp for exp in exp_list if exp in data.keys() and key_dist in data[exp].keys()]
-    values = []
-    avg_values = []
-    for exp in exp_list:
-        values.append(np.asarray(data[exp][key_dist]))
-    for exp, value in zip(exp_list, values):
-        plt.title(key_dist + ' ' + exp)
-        plt.boxplot(value.swapaxes(0, 1), widths=0.5)
-        avg_values.append(np.mean(value, axis=1))
-        plt.ylim(0, 224)
-        plt.savefig(val_path + exp + '_' + key_dist + '.png')
-        plt.clf()
-    for exp, value in zip(exp_list, avg_values):
-        nb_blocks = value.shape[0]
-        x = np.arange(1, nb_blocks+1)
-        plt.scatter(x, value, label=exp)
-    plt.title('All experiments ' + key_dist)
-    plt.legend()
-    plt.ylim(0, 224)
-    plt.savefig(val_path + 'all_' + key_dist + '.png')
-    plt.clf()
-
-
 def get_CKA_adv_plot(output_path, data):
     exp_list = data.keys()
     CKA_adv_list = [data[exp]['CKA_adv'] for exp in exp_list if 'CKA_adv' in data[exp].keys()]
@@ -214,7 +186,7 @@ def AttDist_vs_top1(data, attack, list_models):
                 patch.set(facecolor=color)
         ax.legend(bp['boxes'], legends, loc='lower right')
         ax.set_ylabel('Accuracy')
-        ax.set_xlabel('Attention distance')
+        ax.set_xlabel('Attention distance, in pixels')
         ax.set_yticks(acc + np.arange(0, 101, 10).tolist(), acc + np.arange(0, 101, 10).tolist())
         ax.set_xticks(np.arange(0, 226, 25))
         plt.tight_layout()
@@ -222,12 +194,12 @@ def AttDist_vs_top1(data, attack, list_models):
 
 
 if __name__ == '__main__':
-    json_file = 'saves/all_summaries_01-19_10:30.json'
+    json_file = 'output/val/all_summaries.json'
     data = json.load(open(json_file, 'r'))
     attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01', '_steps:1_eps:0.031', '_steps:1_eps:0.062']
     list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5']
 
-    plot_cka_mat(data, 'CKA_single_cln')
+    # plot_cka_mat(data, 'CKA_single_cln')
     # plot_cka_adv(data, 'CKA_single_adv_steps:40_eps:0.01')
     # for m1 in list_models:
     #     compare_att_distances_model(data, m1, attacks)
@@ -243,3 +215,9 @@ if __name__ == '__main__':
     # AttDist_vs_top1(data, '_cln', list_models)
     # for a1 in attacks:
     #     AttDist_vs_top1(data, '_adv'+a1, list_models)
+    for model in data:
+        experiments = list(data[model].keys())
+        for exp in experiments:
+            if 'AttDist' in exp:
+                data[model].pop(exp)
+    json.dump(data, open(json_file, 'w'))

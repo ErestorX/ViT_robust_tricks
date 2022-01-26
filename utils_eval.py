@@ -221,7 +221,7 @@ def attn_distance(model, name_model, loader, summary, args):
                 attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
                 attn = attn.softmax(dim=-1).permute(1, 0, 2, 3)
                 N = N-1
-                attn = attn[:, :, 1:, :]
+                attn = attn[:, :, 1:, 1:]
                 vect = torch.arange(N).reshape((1, N))
                 dist_map = torch.sqrt((torch.abs((vect - torch.transpose(vect, 0, 1))) % N ** 0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N ** 0.5) ** 2)
                 per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).cuda(), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
@@ -301,7 +301,7 @@ def adv_attn_distance(model, name_model, loss_fn, loader, summary, args, epsilon
                 _, H, _, _ = attn.shape
                 attn = attn.permute(1, 0, 2, 3)
                 N = N - 1
-                attn = attn[:, :, 1:, :]
+                attn = attn[:, :, 1:, 1:]
                 vect = torch.arange(N).reshape((1, N))
                 dist_map = torch.sqrt((torch.abs((vect - torch.transpose(vect, 0, 1))) % N ** 0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N ** 0.5) ** 2)
                 per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).cuda(), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
