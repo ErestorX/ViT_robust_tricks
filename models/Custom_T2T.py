@@ -134,7 +134,8 @@ class Token_transformer(nn.Module):
         self.norm2 = norm_layer(in_dim)
         self.mlp = Mlp(in_features=in_dim, hidden_features=int(in_dim*mlp_ratio), out_features=in_dim, act_layer=act_layer, drop=drop)
 
-    def set_do_param(self, do_param):
+    def set_do_param(self, do_mode, do_param):
+        self.attn.proj_drop.mode = do_mode
         self.attn.proj_drop.exp_mul = do_param
 
     def forward(self, x):

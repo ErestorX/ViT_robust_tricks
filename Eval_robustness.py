@@ -45,8 +45,8 @@ def main():
     if args.steps != 1:
         args.step_size = 0.025
     tested_models = ['vit_base_patch16_224', 'vit_base_patch32_224', 't2t_vit_14']
-    vit_versions = ['doexp5']
-    t2t_versions = ['t', 'p', 't_doexp05l', 't_donegexp05l']
+    vit_versions = ['doexp5', 'donegexp025l']
+    t2t_versions = ['t', 'p', 't_doexp05l', 't_donegexp05l', 't_donegexp025l']
     if args.all_exp:
         tested_models = tested_models + ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224']
         vit_versions = vit_versions + ['dosq4015']
@@ -127,7 +127,7 @@ def main():
         if args.CKA:
             do_all_CKAs(get_CKAs, all_summaries, json_file, model, exp_name, loader, loss_fn, tested_models,
                         vit_versions, t2t_versions, train_path, ext, args)
-        if args.CKA_single:
+        if args.CKA_single or args.all_exp:
             do_all_CKAs(get_CKAs_single_element, all_summaries, json_file, model, exp_name, loader, loss_fn,
                         tested_models, vit_versions, t2t_versions, train_path, ext, args)
 

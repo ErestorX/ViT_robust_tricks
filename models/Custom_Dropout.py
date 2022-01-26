@@ -23,8 +23,8 @@ def probability_from_long_distance_relation(attn, mode='exp', bin_do_val=0.15, t
 
     B, H, N, _ = attn.shape
     attn = attn.permute(1, 0, 2, 3)
-    line_dist_map = torch.arange(N).reshape((1, N)) - torch.arange(N).reshape((N, 1))
-    dist_map = torch.sqrt((line_dist_map % N**0.5) ** 2 + (line_dist_map // N**0.5) ** 2)
+    id_dist = torch.arange(N).reshape((1, N)) - torch.arange(N).reshape((N, 1))
+    dist_map = torch.sqrt((torch.abs(id_dist) % N ** 0.5) ** 2 + (id_dist // N ** 0.5) ** 2)
     per_head_dist = torch.sum(attn * dist_map.to(device='cuda'), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
     return distance2proba(per_head_dist, N)
 

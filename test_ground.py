@@ -221,16 +221,14 @@ def AttDist_vs_top1(data, attack, list_models):
         plt.savefig('output/val/plots/Acc_'+type_attack+'_vs_AttDist_' + block + '.png')
 
 
-
-
 if __name__ == '__main__':
     json_file = 'saves/all_summaries_01-19_10:30.json'
+    data = json.load(open(json_file, 'r'))
     attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01', '_steps:1_eps:0.031', '_steps:1_eps:0.062']
     list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5']
 
-    # plot_cka_mat(json.load(open(json_file, 'r')), 'CKA_single_trf_steps:40_eps:0.003')
-    # plot_cka_adv(json.load(open(json_file, 'r')), 'CKA_single_adv_steps:40_eps:0.003')
-    data = json.load(open(json_file, 'r'))
+    plot_cka_mat(data, 'CKA_single_cln')
+    # plot_cka_adv(data, 'CKA_single_adv_steps:40_eps:0.01')
     # for m1 in list_models:
     #     compare_att_distances_model(data, m1, attacks)
     # compare_att_distances_attack(data, 'AttDist_cln', list_models)
@@ -238,10 +236,10 @@ if __name__ == '__main__':
     #     a1 = 'AttDist_adv' + a1
     #     compare_att_distances_attack(data, a1, list_models)
     # dica = json.load(open('saves/all_summaries_01-17_13:00.json', 'r'))
-    # dicb = json.load(open(json_file, 'r'))
+    # dicb = data
     # dica = recursive_merge_dictionaries(dica, dicb)
     # json.dump(dica, open('output/val/all_summaries.json', 'w'))
     # get_top1_val(json.load(open(json_file, 'r')), attacks, list_models)
-    AttDist_vs_top1(data, '_cln', list_models)
-    for a1 in attacks:
-        AttDist_vs_top1(data, '_adv'+a1, list_models)
+    # AttDist_vs_top1(data, '_cln', list_models)
+    # for a1 in attacks:
+    #     AttDist_vs_top1(data, '_adv'+a1, list_models)

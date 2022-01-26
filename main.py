@@ -596,7 +596,7 @@ def main():
         else:
             exp_name = '-'.join([datetime.now().strftime("%m-%d_%H:%M"), safe_model_name(args.model)])
             if args.custom:
-                exp_name = '-'.join([exp_name, args.custom_do, args.custom_do_param])
+                exp_name = exp_name + '_' + args.custom_do + str(args.custom_do_param)
         output_dir = get_outdir(args.output if args.output else './output/train', exp_name)
         decreasing = True if eval_metric == 'loss' else False
         saver = CheckpointSaver(

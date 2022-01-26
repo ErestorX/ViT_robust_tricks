@@ -221,10 +221,8 @@ def attn_distance(model, name_model, loader, summary, args):
                 attn = (q @ k.transpose(-2, -1)) * (num_heads ** -0.5)
                 attn = attn.softmax(dim=-1).permute(1, 0, 2, 3)
                 vect = torch.arange(N).reshape((1, N))
-                dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
-                        (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
-                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).cuda(), (1, 2, 3)) / torch.sum(
-                    attn, (1, 2, 3))
+                dist_map = torch.sqrt((torch.abs((vect - torch.transpose(vect, 0, 1))) % N ** 0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N ** 0.5) ** 2)
+                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).cuda(), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
                 qkvs[block] = per_head_dist_map * patch_size
                 if t2t and int(block) == 0:
                     qkvs[block] = qkvs[block]/4
@@ -301,10 +299,8 @@ def adv_attn_distance(model, name_model, loss_fn, loader, summary, args, epsilon
                 _, H, _, _ = attn.shape
                 attn = attn.permute(1, 0, 2, 3)
                 vect = torch.arange(N).reshape((1, N))
-                dist_map = torch.sqrt(((vect - torch.transpose(vect, 0, 1)) % (N - 1) ** 0.5) ** 2 + (
-                        (vect - torch.transpose(vect, 0, 1)) // (N - 1) ** 0.5) ** 2)
-                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).cuda(), (1, 2, 3)) / torch.sum(
-                    attn, (1, 2, 3))
+                dist_map = torch.sqrt((torch.abs((vect - torch.transpose(vect, 0, 1))) % N ** 0.5) ** 2 + ((vect - torch.transpose(vect, 0, 1)) // N ** 0.5) ** 2)
+                per_head_dist_map = torch.sum(attn * torch.as_tensor(dist_map).cuda(), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
                 qkvs[block] = per_head_dist_map * patch_size
                 if t2t and int(block) == 0:
                     qkvs[block] = qkvs[block]/4
@@ -666,7 +662,7 @@ def validate(model, loader, loss_fn, summary, args):
 
                 batch_time_m.update(time.time() - end)
                 end = time.time()
-                if last_batch or batch_idx % 100 == 0 and args.local_rank == 0:
+                if (last_batch or batch_idx % 100 == 0) and args.local_rank == 0:
                     log_name = 'Clean'
                     print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
                                                                                batch_time=batch_time_m, top1=top1_m))
@@ -718,7 +714,7 @@ def validate_attack(model, loader, loss_fn, summary, args, epsilonMax=0.062, pgd
 
             batch_time_m.update(time.time() - end)
             end = time.time()
-            if last_batch or batch_idx % 100 == 0 and args.local_rank == 0:
+            if (last_batch or batch_idx % 100 == 0 )and args.local_rank == 0:
                 log_name = 'Adversarial'
                 print('{0}: [{1:>4d}/{2}]  Acc@1: {top1.avg:>7.4f}'.format(log_name, batch_idx, last_idx,
                                                                            batch_time=batch_time_m, top1=top1_m))

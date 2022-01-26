@@ -78,7 +78,7 @@ def compare_att_distances_model(data, model, attacks):
     ax.set_xticks(blocks)
     if 't2t' in model:
         plt.axvline(x=-.1, color='grey', alpha=.8)
-    plt.savefig('output/val/AttDist_' + model + '.png')
+    plt.savefig('output/val/plots/AttDist_' + model + '.png')
 
 
 def compare_att_distances_attack(data, attack, models):
@@ -136,7 +136,7 @@ def compare_att_distances_attack(data, attack, models):
     ax.set_xticks(blocks)
     if t2t:
         plt.axvline(x=-.1, color='grey', alpha=.8)
-    plt.savefig('output/val/AttDist_' + title + '.png')
+    plt.savefig('output/val/plots/AttDist_' + title + '.png')
 
 
 def get_top1_val(data):
