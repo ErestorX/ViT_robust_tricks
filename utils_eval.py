@@ -30,8 +30,10 @@ def centered_gram(X):
         return H
 
     K = gram(X)
+    # print(K)
     m = K.shape[0]
     H = centering_mat(m)
+    # print(H)
     return H @ K @ H
 
 
@@ -393,7 +395,8 @@ def get_transfer_CKA(json_summaries, model_t, model_t_name, model_c, model_c_nam
 
 
 def get_adversarial_CKA(json_summaries, model_t, model_t_name, data_loader, loss_fn, args, epsilonMax=0.062, pgd_steps=1, step_size=1):
-    if "CKA_adv" not in json_summaries.keys():
+    key = '_'.join(['CKA_adv', 'steps:' + str(pgd_steps), 'eps:' + str(epsilonMax)])
+    if key not in json_summaries.keys():
         if args.local_rank == 0:
             print('\t---Starting adversarial CKA computation---')
         model_c = copy.deepcopy(model_t)
@@ -423,7 +426,7 @@ def get_adversarial_CKA(json_summaries, model_t, model_t_name, data_loader, loss
                     hook1.clear()
 
         sim_mat = get_simmat_from_metrics(metrics_ct)
-        json_summaries["CKA_adv"] = sim_mat.tolist()
+        json_summaries[key] = sim_mat.tolist()
 
 
 def get_clean_CKA_single_element(json_summaries, model_t, model_t_name, model_c, model_c_name, data_loader, args):

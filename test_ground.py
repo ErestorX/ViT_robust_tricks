@@ -1,3 +1,6 @@
+
+
+import matplotlib.pyplot as plt
 import numpy as np
 
 from combine_eval_summaries import *
@@ -41,17 +44,31 @@ def get_top1_val(data, experiments, model_list):
     plt.savefig('output/val/Clean_vs_Adversarial_acc.png')
 
 
-def plot_cka_mat(data, cka_type):
-    list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5']
+def plot_cka_mat(data, cka_type, features=None):
+    list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l',
+                   'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch',
+                   'vit_base_patch32_224_doexp5']
     mat = []
     for model_b in list_models:
         for model_t in list_models:
-            mat.append(data[model_b][cka_type][model_t])
+            try:
+                mat.append(data[model_b][cka_type][model_t])
+            except:
+                mat.append(np.zeros((3, 3)))
     fig = plt.figure(figsize=(35, 35))
     for i in range(len(list_models)):
         for j in range(len(list_models)):
-            ax = fig.add_subplot(len(list_models), len(list_models), i*len(list_models)+j+1)
-            ax.imshow(mat[i*len(list_models)+j])
+            ax = fig.add_subplot(len(list_models), len(list_models), i * len(list_models) + j + 1)
+            cka = np.asarray(mat[i * len(list_models) + j])
+            if features == 'qkv':
+                cka = cka[::3, ::3]
+            elif features == 'attn':
+                offset = 1
+                cka = cka[offset::3, offset::3]
+            elif features == 'mlp':
+                offset = 2
+                cka = cka[offset::3, offset::3]
+            ax.imshow(cka)
             if i == 0:
                 ax.set_title(list_models[j])
             if j == 0:
@@ -59,28 +76,51 @@ def plot_cka_mat(data, cka_type):
             # ax.set_xticklabels(range(-6 if i < 4 else 0, len(), 3))
             # ax.set_yticklabels(range(-6 if j < 4 else 0, 3))
     fig.tight_layout()
-    plt.savefig('output/val/plots/' + cka_type + '.png')
+    title = cka_type + ('_allFeatures' if features is None else '_' + features + 'Features')
+    title = title.replace('_', ' ')
+    plt.title(title)
+    title.replace(' ', '_')
+    plt.savefig('output/val/plots/' + title + '.png')
+    plt.close()
 
-def plot_cka_adv(data, cka_type):
+
+def plot_cka_adv(data, cka_type, features=None):
     list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l',
                    'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch',
                    'vit_base_patch32_224_doexp5']
     mat = []
     for model_b in list_models:
-        mat.append(data[model_b][cka_type])
+        try:
+            mat.append(data[model_b][cka_type])
+        except:
+            mat.append(np.zeros((3, 3)))
     fig = plt.figure(figsize=(35, 35))
     for i in range(len(list_models)):
         for j in range(len(list_models)):
             if i != j:
                 continue
             ax = fig.add_subplot(len(list_models), len(list_models), i * len(list_models) + j + 1)
-            ax.imshow(mat[i])
+            cka = np.asarray(mat[i])
+            if features == 'qkv':
+                cka = cka[::3, ::3]
+            elif features == 'attn':
+                offset = 1
+                cka = cka[offset::3, offset::3]
+            elif features == 'mlp':
+                offset = 2
+                cka = cka[offset::3, offset::3]
+            ax.imshow(cka)
             ax.set_xlabel(list_models[j] + ' clean data')
             ax.set_ylabel('adversarial data')
             # ax.set_xticklabels(range(-6 if i < 4 else 0, len(), 3))
             # ax.set_yticklabels(range(-6 if j < 4 else 0, 3))
     fig.tight_layout()
-    plt.savefig('output/val/plots/' + cka_type + '.png')
+    title = cka_type + ('_allFeatures' if features is None else '_' + features + 'Features')
+    title = title.replace('_', ' ')
+    plt.title(title)
+    title = title.replace(' ', '_')
+    plt.savefig('output/val/plots/' + title + '.png')
+    plt.close()
 
 
 def get_CKA_adv_plot(output_path, data):
@@ -99,7 +139,7 @@ def get_CKA_adv_plot(output_path, data):
 
 def recursive_merge_dictionaries(dica, dicb, tree=None):
     if tree is None:
-        tree=[]
+        tree = []
     for key in dicb:
         if key in dica:
             if isinstance(dicb[key], dict) and isinstance(dica[key], dict):
@@ -131,7 +171,7 @@ def AttDist_vs_top1(data, attack, list_models):
     top1 = []
     AttDist = []
     for model in list_models:
-        top1.append(data[model]['Metrics'+attack]['top1'])
+        top1.append(data[model]['Metrics' + attack]['top1'])
         dist = data[model]['AttDist' + attack]
         AttDist.append(dist)
         if 't2t' in model:
@@ -140,9 +180,9 @@ def AttDist_vs_top1(data, attack, list_models):
         else:
             colors.append(vit_green[green_id])
             green_id += 1
-    data_figs = {'block_t2t':{}, 'final_block':{}}
+    data_figs = {'block_t2t': {}, 'final_block': {}}
     for id in vit_block_ckpt[:-1]:
-        data_figs['block_'+str(id)] = {}
+        data_figs['block_' + str(id)] = {}
     for model, acc, dist in zip(list_models, top1, AttDist):
         if 't2t' in model:
             data_figs['block_t2t'][model] = [acc, dist[0]]
@@ -150,13 +190,13 @@ def AttDist_vs_top1(data, attack, list_models):
                 if block_id == -1:
                     data_figs['final_block'][model] = [acc, dist[block_id]]
                 else:
-                    data_figs['block_'+str(block_id-2)][model] = [acc, dist[block_id]]
+                    data_figs['block_' + str(block_id - 2)][model] = [acc, dist[block_id]]
         else:
             for block_id in vit_block_ckpt:
                 if block_id == -1:
                     data_figs['final_block'][model] = [acc, dist[block_id]]
                 else:
-                    data_figs['block_'+str(block_id)][model] = [acc, dist[block_id]]
+                    data_figs['block_' + str(block_id)][model] = [acc, dist[block_id]]
     for block in data_figs.keys():
         fig, ax = plt.subplots(figsize=(10, 5))
         if attack == '_cln':
@@ -164,7 +204,7 @@ def AttDist_vs_top1(data, attack, list_models):
         else:
             params = [x.split(':')[1] for x in attack.split('_')[2:]]
             type_attack = ('FGSM' if params[0] == '1' else 'PGD') + '_' + params[1]
-        plt.title('Accuracy '+type_attack+' vs Attention distance on ' + block)
+        plt.title('Accuracy ' + type_attack + ' vs Attention distance on ' + block)
         acc = []
         distance_points = []
         legends = []
@@ -190,17 +230,139 @@ def AttDist_vs_top1(data, attack, list_models):
         ax.set_yticks(acc + np.arange(0, 101, 10).tolist(), acc + np.arange(0, 101, 10).tolist())
         ax.set_xticks(np.arange(0, 226, 25))
         plt.tight_layout()
-        plt.savefig('output/val/plots/Acc_'+type_attack+'_vs_AttDist_' + block + '.png')
+        plt.savefig('output/val/plots/Acc_' + type_attack + '_vs_AttDist_' + block + '.png')
+
+
+def get_CKA_variations(data, list_models, attacks):
+    for attack in attacks:
+        for model in list_models:
+            try:
+                CKA_cln = np.asarray(data[model]['CKA_cln'][model])
+                CKA_adv = np.asarray(data[model]['CKA_adv' + attack])
+                CKA_trf = np.asarray(data[model]['CKA_trf' + attack][model])
+            except:
+                continue
+            diagonal_cln, diagonal_adv, diagonal_trf = [], [], []
+            non_diagonal_cln, non_diagonal_adv, non_diagonal_trf = [], [], []
+            for i in range(len(CKA_cln)):
+                diagonal_cln.append(CKA_cln[i, i])
+                diagonal_adv.append(CKA_adv[i, i])
+                diagonal_trf.append(CKA_trf[i, i])
+                for j in range(len(CKA_cln)):
+                    if i != j:
+                        non_diagonal_cln.append(CKA_cln[i, j])
+                        non_diagonal_adv.append(CKA_adv[i, j])
+                        non_diagonal_trf.append(CKA_trf[i, j])
+            param = attack.split('_')[1:]
+            param = [float(p.split(':')[-1]) for p in param]
+            steps, eps = param[0], param[1]
+            type_attack = ('FGSM' if steps == 1 else 'PGD') + '-' + str(eps)
+            plt.title(model + '\nCKA variations under ' + type_attack)
+            c = 'r'
+            bp_cln = plt.boxplot([diagonal_cln, non_diagonal_cln], positions=[0, 1.5], patch_artist=True,
+                        boxprops=dict(facecolor=c, color='black', alpha=0.5), medianprops=dict(color='black'), labels=['Clean', 'Clean'])
+            c = 'b'
+            bp_adv = plt.boxplot([diagonal_adv, non_diagonal_adv], positions=[0.33, 1.83], patch_artist=True,
+                        boxprops=dict(facecolor=c, color='black', alpha=0.5), medianprops=dict(color='black'), labels=['Adversarial', 'Adversarial'])
+            c = 'g'
+            bp_trf = plt.boxplot([diagonal_trf, non_diagonal_trf], positions=[0.66, 2.16], patch_artist=True,
+                        boxprops=dict(facecolor=c, color='black', alpha=0.5), medianprops=dict(color='black'), labels=['Transfer', 'Transfer'])
+            plt.xticks([0, 1.5], ['Diagonal values', 'Non-diagonal values'])
+            plt.ylim(0, 1.1)
+            for val in [.2, .4, .6, .8, 1]:
+                plt.axhline(y=val, alpha=0.5, color='black')
+            plt.tight_layout()
+            plt.legend([bp_cln['boxes'][0], bp_adv['boxes'][0], bp_trf['boxes'][0]], ['Clean', 'Adversarial', 'Transfer'])
+            # plt.legend([bp_cln['boxes'][0], bp_trf['boxes'][0]], ['Clean', 'Transfer'])
+            plt.ylabel('CKA variations')
+            plt.savefig('output/val/plots/CKA_var/' + type_attack + '_' + model + '.png')
+            plt.close()
+
+
+def get_CKA_single_variations(data, list_models, attacks):
+    for attack in attacks:
+        for model in list_models:
+            try:
+                CKA_cln = np.asarray(data[model]['CKA_single_cln'][model])
+                CKA_adv = np.asarray(data[model]['CKA_single_adv' + attack])
+                CKA_trf = np.asarray(data[model]['CKA_single_trf' + attack][model])
+            except:
+                continue
+            diagonal_cln, diagonal_adv, diagonal_trf = [], [], []
+            non_diagonal_cln, non_diagonal_adv, non_diagonal_trf = [], [], []
+            for i in range(len(CKA_cln)):
+                diagonal_cln.append(CKA_cln[i, i])
+                diagonal_adv.append(CKA_adv[i, i])
+                diagonal_trf.append(CKA_trf[i, i])
+                for j in range(len(CKA_cln)):
+                    if i != j:
+                        non_diagonal_cln.append(CKA_cln[i, j])
+                        non_diagonal_adv.append(CKA_adv[i, j])
+                        non_diagonal_trf.append(CKA_trf[i, j])
+            param = attack.split('_')[1:]
+            param = [float(p.split(':')[-1]) for p in param]
+            steps, eps = param[0], param[1]
+            type_attack = ('FGSM' if steps == 1 else 'PGD') + '-' + str(eps)
+            plt.title(model + '\nCKA for one image variations under ' + type_attack)
+            c = 'r'
+            bp_cln = plt.boxplot([diagonal_cln, non_diagonal_cln], positions=[0, 1.5], patch_artist=True,
+                        boxprops=dict(facecolor=c, color='black', alpha=0.5), medianprops=dict(color='black'), labels=['Clean', 'Clean'])
+            c = 'b'
+            bp_adv = plt.boxplot([diagonal_adv, non_diagonal_adv], positions=[0.33, 1.83], patch_artist=True,
+                        boxprops=dict(facecolor=c, color='black', alpha=0.5), medianprops=dict(color='black'), labels=['Adversarial', 'Adversarial'])
+            c = 'g'
+            bp_trf = plt.boxplot([diagonal_trf, non_diagonal_trf], positions=[0.66, 2.16], patch_artist=True,
+                        boxprops=dict(facecolor=c, color='black', alpha=0.5), medianprops=dict(color='black'), labels=['Transfer', 'Transfer'])
+            plt.xticks([0, 1.5], ['Diagonal values', 'Non-diagonal values'])
+            plt.ylim(0, 1.1)
+            for val in [.2, .4, .6, .8, 1]:
+                plt.axhline(y=val, alpha=0.5, color='black')
+            plt.legend([bp_cln['boxes'][0], bp_adv['boxes'][0], bp_trf['boxes'][0]], ['Clean', 'Adversarial', 'Transfer'])
+            # plt.legend([bp_cln['boxes'][0], bp_trf['boxes'][0]], ['Clean', 'Transfer'])
+            plt.ylabel('CKA variations')
+            plt.savefig('output/val/plots/CKA_single_var/' + type_attack + '_' + model + '.png')
+            plt.close()
 
 
 if __name__ == '__main__':
     json_file = 'output/val/all_summaries.json'
+    # json_file = 'saves/all_summaries_01-26_14:00.json'
     data = json.load(open(json_file, 'r'))
-    attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01', '_steps:1_eps:0.031', '_steps:1_eps:0.062']
-    list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5']
+    attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01',
+               '_steps:1_eps:0.031', '_steps:1_eps:0.062']
+    list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l',
+                   't2t_vit_14_t_donegexp025l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
+                   'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5', 'vit_base_patch32_224_donegexp025l']
 
-    # plot_cka_mat(data, 'CKA_single_cln')
-    # plot_cka_adv(data, 'CKA_single_adv_steps:40_eps:0.01')
+    for model in list_models:
+        for t_model in data[model]['CKA_cln'].keys():
+            if len(data[model]['CKA_cln'][t_model]) < 20:
+                print(model, 'CKA_cln', t_model, len(data[model]['CKA_cln'][t_model]))
+        cka_trf_keys = [key for key in data[model].keys() if 'CKA_trf' in key]
+        for key in cka_trf_keys:
+            if 'single' in key:
+                continue
+            for t_model in data[model][key].keys():
+                if len(data[model][key][t_model]) < 20:
+                    print(model, key, t_model, len(data[model][key][t_model]))
+        cka_adv_keys = [key for key in data[model].keys() if 'CKA_adv' in key]
+        for key in cka_adv_keys:
+            if 'single' in key:
+                continue
+            if len(data[model][key]) < 20:
+                print(model, key, len(data[model][key]))
+
+    # get_CKA_variations(data, list_models, attacks)
+    # get_CKA_single_variations(data, list_models, attacks)
+    # for feature in [None, 'qkv', 'attn', 'mlp']:
+    #     plot_cka_mat(data, 'CKA_cln', feature)
+        # plot_cka_mat(data, 'CKA_single_cln', feature)
+        # for attack in attacks:
+        #     plot_cka_mat(data, 'CKA_trf' + attack, feature)
+        #     plot_cka_adv(data, 'CKA_adv' + attack, feature)
+            # plot_cka_mat(data, 'CKA_single_trf' + attack, feature)
+            # plot_cka_adv(data, 'CKA_single_adv' + attack, feature)
+
     # for m1 in list_models:
     #     compare_att_distances_model(data, m1, attacks)
     # compare_att_distances_attack(data, 'AttDist_cln', list_models)
@@ -215,9 +377,4 @@ if __name__ == '__main__':
     # AttDist_vs_top1(data, '_cln', list_models)
     # for a1 in attacks:
     #     AttDist_vs_top1(data, '_adv'+a1, list_models)
-    for model in data:
-        experiments = list(data[model].keys())
-        for exp in experiments:
-            if 'AttDist' in exp:
-                data[model].pop(exp)
-    json.dump(data, open(json_file, 'w'))
+

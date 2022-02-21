@@ -88,7 +88,7 @@ def compare_att_distances_attack(data, attack, models):
     t2t_blue = ['midnightblue', 'mediumblue', 'blue', 'mediumslateblue', 'darkorchid', 'fushia', 'violet', 'hotpink',
                  'pink']
     blue_id = 0
-    vit_green = ['darkgreen', 'green', 'limegreen', 'mediumseagreen', 'aqquamarine', 'turquoise', 'paleturquoise',
+    vit_green = ['darkgreen', 'green', 'limegreen', 'mediumseagreen', 'aquamarine', 'turquoise', 'paleturquoise',
                  'lightseagreen', 'darkcyan']
     green_id = 0
     colors = []
@@ -150,7 +150,7 @@ def get_top1_val(data, experiments, model_list):
                 'pink']
     t2t_blue.reverse()
     blue_id = 0
-    vit_green = ['darkgreen', 'green', 'limegreen', 'mediumseagreen', 'aqquamarine', 'turquoise', 'paleturquoise',
+    vit_green = ['darkgreen', 'green', 'limegreen', 'mediumseagreen', 'aquamarine', 'turquoise', 'paleturquoise',
                  'lightseagreen', 'darkcyan']
     green_id = 0
     if model_list is None:
@@ -260,13 +260,14 @@ def AttDist_vs_top1(data, attack, list_models):
 
 
 def main():
-    data = json.load(open('saves/all_summaries_01-19_10:30.json', 'r'))
+    data = json.load(open('output/val/all_summaries.json', 'r'))
     attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01',
                '_steps:1_eps:0.031', '_steps:1_eps:0.062']
     list_models = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp05l', 't2t_vit_14_t_donegexp025l',
                    'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_base_patch32_224_scratch',
                    'vit_base_patch32_224_doexp5', 'vit_base_patch32_224_donegexp025l']
     get_top1_val(data, attacks, list_models)
+
 
 
 if __name__ == '__main__':
