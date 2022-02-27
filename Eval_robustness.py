@@ -45,8 +45,8 @@ def main():
     if args.steps != 1:
         args.step_size = 0.025
     tested_models = ['vit_base_patch16_224', 'vit_base_patch32_224', 't2t_vit_14']
-    vit_versions = ['doexp5', 'donegexp025l']
-    t2t_versions = ['t', 'p', 't_doexp05l', 't_donegexp05l', 't_donegexp025l']
+    vit_versions = ['doexp5', 'donegexp025l', 'donegexp025l_finetuned']
+    t2t_versions = ['t', 'p', 't_doexp05l', 't_donegexp075l', 't_donegexp05l', 't_donegexp025l']
     if args.all_exp:
         tested_models = tested_models + ['vit_tiny_patch16_224', 'vit_small_patch16_224', 'vit_small_patch32_224']
         vit_versions = vit_versions + ['dosq4015']
@@ -114,10 +114,10 @@ def main():
             os.mkdir(val_path)
         loss_fn = CrossEntropyLoss().cuda()
 
-        attn_distance(model, exp_name, loader, all_summaries[exp_name], args)
-        save_experiment_results(json_file, all_summaries, args.local_rank)
-        adv_attn_distance(model, exp_name, loss_fn, loader, all_summaries[exp_name], args, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
-        save_experiment_results(json_file, all_summaries, args.local_rank)
+        # attn_distance(model, exp_name, loader, all_summaries[exp_name], args)
+        # save_experiment_results(json_file, all_summaries, args.local_rank)
+        # adv_attn_distance(model, exp_name, loss_fn, loader, all_summaries[exp_name], args, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
+        # save_experiment_results(json_file, all_summaries, args.local_rank)
         validate(model, loader, loss_fn, all_summaries[exp_name], args)
         save_experiment_results(json_file, all_summaries, args.local_rank)
         validate_attack(model, loader, loss_fn, all_summaries[exp_name], args, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)

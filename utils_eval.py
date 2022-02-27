@@ -30,10 +30,8 @@ def centered_gram(X):
         return H
 
     K = gram(X)
-    # print(K)
     m = K.shape[0]
     H = centering_mat(m)
-    # print(H)
     return H @ K @ H
 
 
@@ -199,6 +197,7 @@ def attn_distance(model, name_model, loader, summary, args):
         patch_size = 32 if '32' in name_model.split('_')[2] else 16
         model.eval()
         qkvs = {}
+        batch_vals = []
         for batch_idx, (input, target) in enumerate(loader):
             _ = model(input)
             for block, qkv in qkvs.items():
@@ -232,11 +231,20 @@ def attn_distance(model, name_model, loader, summary, args):
                     qkvs[block] = qkvs[block]/4
                 elif t2t and int(block) == 1:
                     qkvs[block] = qkvs[block]/2
-            break
-        vals = []
-        for qkv in qkvs.values():
-            vals.append(qkv.cpu().numpy().tolist())
-        summary['AttDist_cln'] = vals
+            vals = []
+            for qkv in qkvs.values():
+                vals.append(qkv.cpu().numpy().tolist())
+            batch_vals.append(vals)
+            if batch_idx * (input.size(0)+1) > 5000:
+                break
+        avg_vals = []
+        nb_batch = len(batch_vals)
+        for i in range(len(batch_vals[0])):
+            sum = np.zeros((len(batch_vals[0][i])))
+            for j in batch_vals:
+                sum += np.asarray(j[i])
+            avg_vals.append((sum/nb_batch).tolist())
+        summary['AttDist_cln'] = avg_vals
 
 
 def adv_attn_distance(model, name_model, loss_fn, loader, summary, args, epsilonMax=.062, pgd_steps=1, step_size=1):

@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #VIT_VAL="doexp5 donegexp025l dosq4015"
-VIT_VAL="doexp5 donegexp025l"
-T2T_VAL="t p t_doexp05l t_donegexp05l t_donegexp025l"
+VIT_VAL="doexp5 donegexp025l donegexp025l_finetuned"
+T2T_VAL="t p t_doexp05l t_donegexp075l t_donegexp05l t_donegexp025l"
 NUM_PROC=$1
 shift
 

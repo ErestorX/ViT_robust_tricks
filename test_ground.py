@@ -1,8 +1,3 @@
-
-
-import matplotlib.pyplot as plt
-import numpy as np
-
 from combine_eval_summaries import *
 
 
@@ -126,7 +121,6 @@ def plot_cka_adv(data, cka_type, features=None):
 def get_CKA_adv_plot(output_path, data):
     exp_list = data.keys()
     CKA_adv_list = [data[exp]['CKA_adv'] for exp in exp_list if 'CKA_adv' in data[exp].keys()]
-    print(len(CKA_adv_list))
     for exp, CKA_adv in zip(exp_list, CKA_adv_list):
         fig = plt.figure(figsize=(8, 8))
         fig.suptitle(exp)
@@ -212,7 +206,7 @@ def AttDist_vs_top1(data, attack, list_models):
             for model in data_figs[block].keys():
                 acc.append(round(data_figs[block][model][0], 2))
                 distance_points.append(data_figs[block][model][1])
-                legends.append(model)
+                legends.append(beautiful_model_name(model))
             bp = ax.boxplot(distance_points, positions=acc, vert=False, patch_artist=True, widths=1.5)
             for patch, color in zip(bp['boxes'], t2t_blue[:blue_id]):
                 patch.set(facecolor=color)
@@ -220,7 +214,7 @@ def AttDist_vs_top1(data, attack, list_models):
             for model in data_figs[block].keys():
                 acc.append(round(data_figs[block][model][0], 2))
                 distance_points.append(data_figs[block][model][1])
-                legends.append(model)
+                legends.append(beautiful_model_name(model))
             bp = ax.boxplot(distance_points, positions=acc, vert=False, patch_artist=True, widths=1.5)
             for patch, color in zip(bp['boxes'], colors):
                 patch.set(facecolor=color)
@@ -257,7 +251,7 @@ def get_CKA_variations(data, list_models, attacks):
             param = [float(p.split(':')[-1]) for p in param]
             steps, eps = param[0], param[1]
             type_attack = ('FGSM' if steps == 1 else 'PGD') + '-' + str(eps)
-            plt.title(model + '\nCKA variations under ' + type_attack)
+            plt.title(beautiful_model_name(model) + '\nCKA variations under ' + type_attack)
             c = 'r'
             bp_cln = plt.boxplot([diagonal_cln, non_diagonal_cln], positions=[0, 1.5], patch_artist=True,
                         boxprops=dict(facecolor=c, color='black', alpha=0.5), medianprops=dict(color='black'), labels=['Clean', 'Clean'])
@@ -303,7 +297,7 @@ def get_CKA_single_variations(data, list_models, attacks):
             param = [float(p.split(':')[-1]) for p in param]
             steps, eps = param[0], param[1]
             type_attack = ('FGSM' if steps == 1 else 'PGD') + '-' + str(eps)
-            plt.title(model + '\nCKA for one image variations under ' + type_attack)
+            plt.title(beautiful_model_name(model) + '\nCKA for one image variations under ' + type_attack)
             c = 'r'
             bp_cln = plt.boxplot([diagonal_cln, non_diagonal_cln], positions=[0, 1.5], patch_artist=True,
                         boxprops=dict(facecolor=c, color='black', alpha=0.5), medianprops=dict(color='black'), labels=['Clean', 'Clean'])
@@ -324,9 +318,36 @@ def get_CKA_single_variations(data, list_models, attacks):
             plt.close()
 
 
+def delete_old_incomplete_CKA(json_file, data, list_models):
+    for model in list_models:
+        t_model_list = list(data[model]['CKA_cln'].keys())
+        for t_model in t_model_list:
+            if len(data[model]['CKA_cln'][t_model]) < 20:
+                print(model, 'CKA_cln', t_model, len(data[model]['CKA_cln'][t_model]))
+                del data[model]['CKA_cln'][t_model]
+        cka_trf_keys = [key for key in data[model].keys() if 'CKA_trf' in key]
+        for key in cka_trf_keys:
+            if 'single' in key:
+                continue
+            t_model_list = list(data[model][key].keys())
+            for t_model in t_model_list:
+                if len(data[model][key][t_model]) < 20:
+                    print(model, key, t_model, len(data[model][key][t_model]))
+                    del data[model][key][t_model]
+        cka_adv_keys = [key for key in data[model].keys() if 'CKA_adv' in key]
+        for key in cka_adv_keys:
+            if 'single' in key:
+                continue
+            if len(data[model][key]) < 20:
+                print(model, key, len(data[model][key]))
+                del data[model][key]
+
+    json.dump(data, open(json_file, 'w'))
+
+
 if __name__ == '__main__':
-    json_file = 'output/val/all_summaries.json'
-    # json_file = 'saves/all_summaries_01-26_14:00.json'
+    # json_file = 'output/val/all_summaries.json'
+    json_file = 'saves/all_summaries_02-22_11:00.json'
     data = json.load(open(json_file, 'r'))
     attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01',
                '_steps:1_eps:0.031', '_steps:1_eps:0.062']
@@ -334,23 +355,18 @@ if __name__ == '__main__':
                    't2t_vit_14_t_donegexp025l', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
                    'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5', 'vit_base_patch32_224_donegexp025l']
 
-    for model in list_models:
-        for t_model in data[model]['CKA_cln'].keys():
-            if len(data[model]['CKA_cln'][t_model]) < 20:
-                print(model, 'CKA_cln', t_model, len(data[model]['CKA_cln'][t_model]))
-        cka_trf_keys = [key for key in data[model].keys() if 'CKA_trf' in key]
-        for key in cka_trf_keys:
-            if 'single' in key:
-                continue
-            for t_model in data[model][key].keys():
-                if len(data[model][key][t_model]) < 20:
-                    print(model, key, t_model, len(data[model][key][t_model]))
-        cka_adv_keys = [key for key in data[model].keys() if 'CKA_adv' in key]
-        for key in cka_adv_keys:
-            if 'single' in key:
-                continue
-            if len(data[model][key]) < 20:
-                print(model, key, len(data[model][key]))
+    list_models_vit = ['vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
+                   'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5', 'vit_base_patch32_224_donegexp025l']
+    list_models_t2t = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp025l', 't2t_vit_14_t_donegexp05l']
+    # list_models = list_models_t2t
+
+    # for m1_id, model_1 in enumerate(list_models):
+    #     for model_2 in list_models[m1_id+1:]:
+    #         CKA_and_attDist_plot(data, model_1, model_2, '_cln')
+    #         for attack in attacks:
+    #             CKA_and_attDist_plot(data, model_1, model_2, attack)
+
+    table_top1_val(data, ['_cln'] + attacks, list_models)
 
     # get_CKA_variations(data, list_models, attacks)
     # get_CKA_single_variations(data, list_models, attacks)
@@ -364,11 +380,11 @@ if __name__ == '__main__':
             # plot_cka_adv(data, 'CKA_single_adv' + attack, feature)
 
     # for m1 in list_models:
-    #     compare_att_distances_model(data, m1, attacks)
-    # compare_att_distances_attack(data, 'AttDist_cln', list_models)
+    #     compare_att_distances_model_avg(data, m1, attacks)
+    # compare_att_distances_attack_avg(data, 'AttDist_cln', list_models)
     # for a1 in attacks:
     #     a1 = 'AttDist_adv' + a1
-    #     compare_att_distances_attack(data, a1, list_models)
+    #     compare_att_distances_attack_avg(data, a1, list_models)
     # dica = json.load(open('saves/all_summaries_01-17_13:00.json', 'r'))
     # dicb = data
     # dica = recursive_merge_dictionaries(dica, dicb)
