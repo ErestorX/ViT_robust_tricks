@@ -164,7 +164,6 @@ class T2T_module(nn.Module):
             self.soft_split0 = nn.Conv2d(3, token_dim, kernel_size=(7, 7), stride=(4, 4), padding=(2, 2))  # the 1st convolution
             self.soft_split1 = nn.Conv2d(token_dim, token_dim, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)) # the 2nd convolution
             self.project = nn.Conv2d(token_dim, embed_dim, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)) # the 3rd convolution
-
         self.num_patches = (img_size // (4 * 2 * 2)) * (img_size // (4 * 2 * 2))  # there are 3 sfot split, stride are 4,2,2 seperately
 
     def forward(self, x):
@@ -262,11 +261,24 @@ class T2T_ViT(nn.Module):
         return x
 
 
+def safe_merge_dicts(d1, d2):
+    """
+    Merge two dicts, but don't overwrite keys in d1.
+    """
+    d = d1.copy()
+    for k, v in d2.items():
+        if k not in d:
+            d[k] = v
+    return d
+
+
 @register_model
 def t2t_vit_14_p(pretrained=False, **kwargs):  # adopt performer for tokens to token
     if pretrained:
         kwargs.setdefault('qk_scale', 384 ** -0.5)
-    model = T2T_ViT(tokens_type='performer', embed_dim=384, depth=14, num_heads=6, mlp_ratio=3., **kwargs)
+    model_kwargs = dict(embed_dim=384, depth=14, num_heads=6, mlp_ratio=3.)
+    model_kwargs = safe_merge_dicts(kwargs, model_kwargs)
+    model = T2T_ViT(**model_kwargs)
     model.default_cfg = default_cfgs['T2t_vit_14_p']
     if pretrained:
         load_pretrained(
@@ -278,7 +290,9 @@ def t2t_vit_14_p(pretrained=False, **kwargs):  # adopt performer for tokens to t
 def t2t_vit_14_t(pretrained=False, **kwargs):  # adopt transformers for tokens to token
     if pretrained:
         kwargs.setdefault('qk_scale', 384 ** -0.5)
-    model = T2T_ViT(tokens_type='transformer', embed_dim=384, depth=14, num_heads=6, mlp_ratio=3., **kwargs)
+    model_kwargs = dict(embed_dim=384, depth=14, num_heads=6, mlp_ratio=3., tokens_type='transformer')
+    model_kwargs = safe_merge_dicts(kwargs, model_kwargs)
+    model = T2T_ViT(**model_kwargs)
     model.default_cfg = default_cfgs['T2t_vit_14_t']
     if pretrained:
         load_pretrained(
@@ -286,7 +300,35 @@ def t2t_vit_14_t(pretrained=False, **kwargs):  # adopt transformers for tokens t
     return model
 
 
-def load_t2t_vit(model_name, checkpoint_path):
+@register_model
+def t2t_vit_14_p_custom_depth(pretrained=False, **kwargs):  # adopt performer for tokens to token
+    if pretrained:
+        kwargs.setdefault('qk_scale', 384 ** -0.5)
+    model_kwargs = dict(embed_dim=384, depth=14, num_heads=6, mlp_ratio=3.)
+    model_kwargs = safe_merge_dicts(kwargs, model_kwargs)
+    model = T2T_ViT(**model_kwargs)
+    model.default_cfg = default_cfgs['T2t_vit_14_p']
+    if pretrained:
+        load_pretrained(
+            model, num_classes=model.num_classes, in_chans=kwargs.get('in_chans', 3))
+    return model
+
+
+@register_model
+def t2t_vit_14_t_custom_depth(pretrained=False, **kwargs):  # adopt transformers for tokens to token
+    if pretrained:
+        kwargs.setdefault('qk_scale', 384 ** -0.5)
+    model_kwargs = dict(embed_dim=384, depth=14, num_heads=6, mlp_ratio=3., tokens_type='transformer')
+    model_kwargs = safe_merge_dicts(kwargs, model_kwargs)
+    model = T2T_ViT(**model_kwargs)
+    model.default_cfg = default_cfgs['T2t_vit_14_t']
+    if pretrained:
+        load_pretrained(
+            model, num_classes=model.num_classes, in_chans=kwargs.get('in_chans', 3))
+    return model
+
+
+def load_t2t_vit(model_name, checkpoint_path, depth=None):
     assert os.path.isfile(checkpoint_path)
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     state_dict = OrderedDict()
@@ -294,9 +336,15 @@ def load_t2t_vit(model_name, checkpoint_path):
         name = k[7:] if k.startswith('module') else k
         state_dict[name] = v
 
-    if model_name == "t2t_vit_14_p":
-        model = t2t_vit_14_p()
-    elif model_name == "t2t_vit_14_t":
-        model = t2t_vit_14_t()
+    if depth is None:
+        if model_name == "t2t_vit_14_p":
+            model = t2t_vit_14_p()
+        elif model_name == "t2t_vit_14_t":
+            model = t2t_vit_14_t()
+    else:
+        if model_name == "t2t_vit_14_p":
+            model = t2t_vit_14_p_custom_depth()
+        elif model_name == "t2t_vit_14_t":
+            model = t2t_vit_14_t_custom_depth()
     model.load_state_dict(state_dict, strict=False)
     return model

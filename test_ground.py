@@ -346,8 +346,8 @@ def delete_old_incomplete_CKA(json_file, data, list_models):
 
 
 if __name__ == '__main__':
-    # json_file = 'output/val/all_summaries.json'
-    json_file = 'saves/all_summaries_02-22_11:00.json'
+    json_file = 'output/val/all_summaries.json'
+    # json_file = 'saves/all_summaries_03-02_14:30.json'
     data = json.load(open(json_file, 'r'))
     attacks = ['_steps:40_eps:0.001', '_steps:40_eps:0.003', '_steps:40_eps:0.005', '_steps:40_eps:0.01',
                '_steps:1_eps:0.031', '_steps:1_eps:0.062']
@@ -358,15 +358,69 @@ if __name__ == '__main__':
     list_models_vit = ['vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained',
                    'vit_base_patch32_224_scratch', 'vit_base_patch32_224_doexp5', 'vit_base_patch32_224_donegexp025l']
     list_models_t2t = ['t2t_vit_14_p', 't2t_vit_14_t', 't2t_vit_14_t_doexp05l', 't2t_vit_14_t_donegexp025l', 't2t_vit_14_t_donegexp05l']
-    # list_models = list_models_t2t
-
+    # list_models = list_models_vit
+    # base_models = ['vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 't2t_vit_14_p', 't2t_vit_14_t']
+    base_models = ['t2t_vit_14_p', 't2t_vit_14_t', 'vit_base_patch16_224_pretrained', 'vit_base_patch32_224_pretrained', 'vit_small_patch16_224_pretrained', 'vit_small_patch32_224_pretrained', 'vit_tiny_patch16_224_pretrained']
+    print(np.asarray(data['vit_small_patch16_224_pretrained']['AttDist_cln']).shape)
     # for m1_id, model_1 in enumerate(list_models):
     #     for model_2 in list_models[m1_id+1:]:
     #         CKA_and_attDist_plot(data, model_1, model_2, '_cln')
     #         for attack in attacks:
     #             CKA_and_attDist_plot(data, model_1, model_2, attack)
 
-    table_top1_val(data, ['_cln'] + attacks, list_models)
+    # table_top1_val(data, ['_cln'] + attacks, list_models)
+
+    # model_1, model_2 = 't2t_vit_14_t', 't2t_vit_14_p'
+    # mat = np.asarray(data[model_1]['CKA_cln'][model_2])
+    # if len(mat) > 16:
+    #     mat = mat[3::3, 3::3]
+    # fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+    # axes.imshow(mat)
+    # axes.set_title('CKA clean data ' + beautiful_model_name(model_1) + '\nand ' + beautiful_model_name(model_2))
+    # axes.set_xticks(range(0, len(mat[0]), 2))
+    # axes.set_yticks(range(0, len(mat), 2))
+    # axes.set_xlabel('Blocks ID of ' + beautiful_model_name(model_1))
+    # axes.set_ylabel('Blocks ID of ' + beautiful_model_name(model_2))
+    # plt.savefig('output/val/plots/CKA_' + model_1 + '_' + model_2 + '_cln.png')
+    # plt.close()
+
+    # model, attack = 't2t_vit_14_t', '_steps:40_eps:0.001'
+    # for atk in attacks:
+    #     mat = np.asarray(data[model]['CKA_adv' + atk])
+    #     if len(mat) > 16:
+    #         mat = mat[3::3, 3::3]
+    #     fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+    #     axes.imshow(mat)
+    #     axes.set_title('CKA of ' + beautiful_model_name(model) + '\nunder '+ beautiful_attack_name(atk, cln_is_no=True) + ' attack')
+    #     axes.set_xticks(range(0, len(mat), 2))
+    #     axes.set_yticks(range(0, len(mat), 2))
+    #     axes.set_xlabel('Blocks ID')
+    #     axes.set_ylabel('Blocks ID')
+    #     plt.savefig('output/val/plots/CKA_' + model + atk + '.png')
+
+    # fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(10, 5))
+    # colors = ['b', 'r', 'g', 'c']
+    # parameters = [1, 5, 10, 14]
+    # parameters_name = ["Layer: l = "+str(i) for i in parameters]
+    # plot_lines = []
+    # x = np.linspace(0, 1, 100)
+    # for l, c in zip(parameters, colors):
+    #     d1 = 0.5 - (0.5 / np.exp(l * x / 2))
+    #     d2 = 0.5 / np.exp(l * x / 2)
+    #     axes.plot(d1, '-', color=c)
+    #     axes.plot(d2, '--', color=c)
+    # lines = axes.get_lines()
+    # legend1 = plt.legend([lines[0], lines[1]], ["Drop out = 0.5 - (0.5 / exp(lpx))", "Drop out = 0.5 / exp(lpx)"], loc=3)
+    # legend2 = plt.legend([lines[i] for i in [0, 2, 4, 6]], parameters_name, loc=2)
+    # axes.add_artist(legend1)
+    # axes.add_artist(legend2)
+    # axes.set_xlabel('Attention distance in percent of feature space')
+    # axes.set_ylabel('Attributed dropout')
+    # plt.grid()
+    # plt.title('Drop out functions, with function parameter p = 0.5')
+    # plt.savefig('output/val/plots/do_fn.png')
+    # plt.close()
+
 
     # get_CKA_variations(data, list_models, attacks)
     # get_CKA_single_variations(data, list_models, attacks)
@@ -381,7 +435,8 @@ if __name__ == '__main__':
 
     # for m1 in list_models:
     #     compare_att_distances_model_avg(data, m1, attacks)
-    # compare_att_distances_attack_avg(data, 'AttDist_cln', list_models)
+    # compare_att_distances_attack(data, 'AttDist_cln', base_models)
+    # compare_att_distances_attack(data, 'AttDist_adv_steps:1_eps:0.062', base_models)
     # for a1 in attacks:
     #     a1 = 'AttDist_adv' + a1
     #     compare_att_distances_attack_avg(data, a1, list_models)
@@ -393,4 +448,3 @@ if __name__ == '__main__':
     # AttDist_vs_top1(data, '_cln', list_models)
     # for a1 in attacks:
     #     AttDist_vs_top1(data, '_adv'+a1, list_models)
-

@@ -69,17 +69,14 @@ def main():
     if 't2t' not in tested_models[args.version]:
         if args.ckpt in vit_versions:
             ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
-            val_path = val_path + tested_models[args.version] + '_' + args.ckpt
             exp_name = tested_models[args.version] + '_' + args.ckpt
             model_name = 'custom_' + tested_models[args.version]
         else:
             ckpt_path = train_path + tested_models[args.version]
-            val_path = val_path + tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
             exp_name = tested_models[args.version] + ('_pretrained' if args.p else '_scratch')
             model_name = tested_models[args.version]
     elif args.ckpt in t2t_versions:
         ckpt_path = train_path + tested_models[args.version] + '_' + args.ckpt
-        val_path = val_path + tested_models[args.version] + '_' + args.ckpt
         exp_name = tested_models[args.version] + '_' + args.ckpt
         if args.ckpt in ['t', 'p']:
             model_name = tested_models[args.version] + '_' + args.ckpt
@@ -110,26 +107,25 @@ def main():
         all_summaries[exp_name] = {}
     if os.path.exists(ckpt_path) or args.p:
         loader = get_val_loader(args.data, batch_size=args.b)
-        if not os.path.exists(val_path):
-            os.mkdir(val_path)
         loss_fn = CrossEntropyLoss().cuda()
 
-        # attn_distance(model, exp_name, loader, all_summaries[exp_name], args)
-        # save_experiment_results(json_file, all_summaries, args.local_rank)
-        # adv_attn_distance(model, exp_name, loss_fn, loader, all_summaries[exp_name], args, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
-        # save_experiment_results(json_file, all_summaries, args.local_rank)
+        attn_distance(model, exp_name, loader, all_summaries[exp_name], args)
+        save_experiment_results(json_file, all_summaries, args.local_rank)
+        adv_attn_distance(model, exp_name, loss_fn, loader, all_summaries[exp_name], args, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
+        save_experiment_results(json_file, all_summaries, args.local_rank)
         validate(model, loader, loss_fn, all_summaries[exp_name], args)
         save_experiment_results(json_file, all_summaries, args.local_rank)
         validate_attack(model, loader, loss_fn, all_summaries[exp_name], args, epsilonMax=args.epsilon, pgd_steps=args.steps, step_size=args.step_size)
         save_experiment_results(json_file, all_summaries, args.local_rank)
-        # freq_hist(val_path.split('/')[-1], val_path)
 
         if args.CKA:
-            do_all_CKAs(get_CKAs, all_summaries, json_file, model, exp_name, loader, loss_fn, tested_models,
-                        vit_versions, t2t_versions, train_path, ext, args)
+            # do_all_CKAs(get_CKAs, all_summaries, json_file, model, exp_name, loader, loss_fn, tested_models,
+            #             vit_versions, t2t_versions, train_path, ext, args)
+            pass
         if args.CKA_single or args.all_exp:
-            do_all_CKAs(get_CKAs_single_element, all_summaries, json_file, model, exp_name, loader, loss_fn,
-                        tested_models, vit_versions, t2t_versions, train_path, ext, args)
+            # do_all_CKAs(get_CKAs_single_element, all_summaries, json_file, model, exp_name, loader, loss_fn,
+            #             tested_models, vit_versions, t2t_versions, train_path, ext, args)
+            pass
 
 
 if __name__ == '__main__':

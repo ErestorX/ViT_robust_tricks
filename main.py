@@ -295,6 +295,10 @@ parser.add_argument('--custom_do', default='exp', type=str,
                     help='change the mode of the variable dropout')
 parser.add_argument('--custom_do_param', default=0.5, type=float,
                     help='set the dropout parameter')
+parser.add_argument('--depth', default=None, type=int,
+                    help='set the depth of the model')
+parser.add_argument('--attention_loss', action='store_true', default=False,
+                    help='use auxiliary attention loss')
 
 
 def _parse_args():
@@ -310,6 +314,8 @@ def _parse_args():
     args = parser.parse_args(remaining)
     if args.custom:
         args.model = 'custom_' + args.model
+    if args.depth is not None:
+        args.model = args.model + '_custom_depth'
 
     # Cache the args as a text string to save them in the output dir later
     args_text = yaml.safe_dump(args.__dict__, default_flow_style=False)
@@ -377,7 +383,8 @@ def main():
         bn_momentum=args.bn_momentum,
         bn_eps=args.bn_eps,
         scriptable=args.torchscript,
-        checkpoint_path=args.initial_checkpoint)
+        checkpoint_path=args.initial_checkpoint,
+        depth=args.depth)
     if args.custom:
         model.set_do_param(args.custom_do, args.custom_do_param)
 

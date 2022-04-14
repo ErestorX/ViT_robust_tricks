@@ -17,7 +17,7 @@ cooldown_epochs: 0
 crop_pct: null
 cutmix: 0.0
 cutmix_minmax: null
-data_dir: /data/hugo/ImageNet
+data_dir: /data/hugo/ImageNet/
 dataset: ''
 decay_epochs: 100
 decay_rate: 0.03

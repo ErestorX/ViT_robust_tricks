@@ -126,7 +126,7 @@ class VisionTransformer(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=True, representation_size=None, distilled=False,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., embed_layer=PatchEmbed, norm_layer=None,
-                 act_layer=None, weight_init='', per_layer_do=False, exp_mul=0.25):
+                 act_layer=None, weight_init='', per_layer_do=False, exp_mul=0.25, do_mode='exp'):
         """
         Args:
             img_size (int, tuple): input image size
@@ -153,7 +153,7 @@ class VisionTransformer(nn.Module):
         self.num_tokens = 2 if distilled else 1
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         act_layer = act_layer or nn.GELU
-        self.do_mode = 'exp'
+        self.do_mode = do_mode
         self.exp_mul = exp_mul
         threshold = 4 if patch_size == 16 else 2
 

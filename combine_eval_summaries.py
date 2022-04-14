@@ -36,7 +36,8 @@ def beautiful_model_name(model_name):
         elif token == 't':
             final_tokens.append('-t')
         elif token == 'pretrained':
-            final_tokens.append(' Pretained')
+            final_tokens.append(' Pretrained')
+            # pass
         elif token == 'scratch':
             final_tokens.append(' INet training')
         elif token == 'doexp05l':
@@ -55,6 +56,16 @@ def beautiful_model_name(model_name):
             final_tokens.append('-'+token)
     return ''.join(final_tokens)
 
+
+def beautiful_attack_name(attack_name, cln_is_no=False):
+    if attack_name == '_cln':
+        return 'no' if cln_is_no else 'Clean'
+    else:
+        param = attack_name.split('_')[-2:]
+        param = [float(p.split(':')[-1]) for p in param]
+        steps, eps = param[0], param[1]
+        atk_name = ('FGSM' if steps == 1 else 'PGD') + ' ' + str(eps)
+        return atk_name
 
 def order_exp(val_path, exp_list):
     models_list = ['_'.join(model.split('_')[:-1]) for model in exp_list]
@@ -200,7 +211,7 @@ def compare_att_distances_model_avg(data, model, attacks):
     plt.legend()
     plt.tight_layout()
     # ax.set_ylim(0, 224)
-    plt.savefig('output/val/plots/AttDist_' + model + '_avg_baseModels.png')
+    plt.savefig('output/val/plots/AttDist_' + model + '_avg.png')
 
 
 def compare_att_distances_attack(data, attack, models):
@@ -223,7 +234,7 @@ def compare_att_distances_attack(data, attack, models):
     block_width = 0.8 / nb_exp
     t2t = False
     for i in range(nb_exp):
-        if 't2t' in legends[i]:
+        if 'T2T' in legends[i]:
             t2t = True
             list_blocks.append(np.arange(-2 + (i * block_width), len(list_exp[i]) - 2 + (i * block_width), 1.0))
             colors.append(t2t_blue[blue_id])
@@ -242,6 +253,10 @@ def compare_att_distances_attack(data, attack, models):
         title = ('FGSM' if steps == 1 else 'PGD') + '_' + str(eps)
     plt.title('Attention distance on ' + title)
     list_bp = [ax.boxplot(e, positions=b, patch_artist=True, widths=block_width) for e, b in zip(list_exp, list_blocks)]
+    colors = ['#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45',
+              '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1',
+              '#000075', '#a9a9a9', '#ffffff', '#000000']
+
     for bp, color in zip(list_bp, colors):
         for element in ['whiskers', 'fliers', 'means', 'medians', 'caps']:
             plt.setp(bp[element], color=color)
@@ -261,7 +276,8 @@ def compare_att_distances_attack(data, attack, models):
     if t2t:
         plt.axvline(x=-.1, color='grey', alpha=.8)
     ax.set_xlabel('Block ID, negative for the T2T blocks')
-    plt.savefig('output/val/plots/AttDist_' + title + '.png')
+    plt.tight_layout()
+    plt.savefig('output/val/plots/AttDist_' + title + '_pretrainedModels.png')
 
 
 def compare_att_distances_attack_avg(data, attack, models):
@@ -293,7 +309,7 @@ def compare_att_distances_attack_avg(data, attack, models):
     list_blocks = []
     t2t = False
     for i in range(nb_exp):
-        if 't2t' in legends[i]:
+        if 't2t' in models[i]:
             t2t = True
             colors.append(t2t_blue[blue_id])
             blue_id += 1
@@ -316,9 +332,7 @@ def compare_att_distances_attack_avg(data, attack, models):
         for block in e:
             avg_e.append(np.mean(block))
         list_exp[id] = avg_e
-    colors_t2t = ['violet', 'darkorchid', 'mediumblue', 'midnightblue']
-    colors_vit = ['darkgreen', 'green', 'aquamarine', 'turquoise', 'lightseagreen', 'darkcyan']
-    colors = colors_t2t
+        colors = ['#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#ffffff', '#000000']
     for blocks, e, color, legend in zip(list_blocks, list_exp, colors, legends):
         plt.plot(blocks, e, color=color, label=legend)
     # ax.set_ylim(0, 224)
@@ -329,7 +343,7 @@ def compare_att_distances_attack_avg(data, attack, models):
     ax.legend()
     if t2t:
         plt.axvline(x=-.5, color='grey', alpha=.8)
-    plt.savefig('output/val/plots/AttDist_' + title + '_avg_t2tModels.png')
+    plt.savefig('output/val/plots/AttDist_' + title + '_avg_pretrainedModels.png')
 
 
 def get_top1_val(data, experiments, model_list):

@@ -210,9 +210,9 @@ class T2T_module(nn.Module):
 class T2T_ViT(nn.Module):
     def __init__(self, img_size=224, tokens_type='performer', in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, token_dim=64, per_layer_do=False, exp_mul=0.25):
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, token_dim=64, per_layer_do=False, exp_mul=0.25, do_mode='exp'):
         super().__init__()
-        self.do_mode = 'exp'
+        self.do_mode = do_mode
         self.exp_mul = exp_mul
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
