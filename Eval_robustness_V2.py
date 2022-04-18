@@ -17,14 +17,14 @@ parser.add_argument('-b', default=64, type=int)
 parser.add_argument('-gpu', default=0, type=int)  # 0 for the RTX A5000 on workstation
 
 def main(args):
-    if os.path.exists('output/val/all_summaries_test.json'):
-        with open('output/val/all_summaries_test.json', 'r') as json_file:
-            all_summaries = json.load(json_file)
+    if os.path.exists('output/val/attention_summary.json'):
+        with open('output/val/attention_summary.json', 'r') as f:
+            all_summaries = json.load(f)
     else:
         all_summaries = {}
-        with open('output/val/all_summaries_test.json', 'w+') as f:
+        with open('output/val/attention_summary.json', 'w+') as f:
             json.dump(all_summaries, f)
-    json_file = 'output/val/all_summaries_test.json'
+    json_file = 'output/val/attention_summary.json'
 
     model, experiment_name = load_model_and_make_name(args)
     model = model.eval().cuda()
@@ -36,25 +36,14 @@ def main(args):
     loader = get_val_loader(args.data, batch_size=args.b)
     loss_fn = CrossEntropyLoss().cuda()
 
-    # attn_distance(model, experiment_name, loader, all_summaries[experiment_name], args)
-    # save_experiment_results(json_file, all_summaries, args.local_rank)
-    # validate(model, loader, loss_fn, all_summaries[experiment_name], args)
-    # save_experiment_results(json_file, all_summaries, args.local_rank)
     get_accuracy_and_attention(model, experiment_name, loader, loss_fn, all_summaries[experiment_name], args)
     save_experiment_results(json_file, all_summaries, args.local_rank)
 
     attacks = [[1, 0.031], [1, 0.062], [40, 0.001], [40, 0.003], [40, 0.005], [40, 0.01]]
     for steps, epsilon in attacks:
-        if steps != 1:
-            step_size = 0.025
-        else:
-            step_size = 1
+        step_size = 0.025 if steps != 1 else 1
         get_attack_accuracy_and_attention(model, experiment_name, loader, loss_fn, all_summaries[experiment_name], args, epsilonMax=epsilon, pgd_steps=steps, step_size=step_size)
         save_experiment_results(json_file, all_summaries, args.local_rank)
-        # adv_attn_distance(model, experiment_name, loss_fn, loader, all_summaries[experiment_name], args, epsilonMax=epsilon, pgd_steps=steps, step_size=step_size)
-        # save_experiment_results(json_file, all_summaries, args.local_rank)
-        # validate_attack(model, loader, loss_fn, all_summaries[experiment_name], args, epsilonMax=epsilon, pgd_steps=steps, step_size=step_size)
-        # save_experiment_results(json_file, all_summaries, args.local_rank)
 
 
 if __name__ == '__main__':
@@ -97,4 +86,5 @@ if __name__ == '__main__':
         try:
             main(args)
         except Exception as e:
-            print(e)
+            if args.local_rank == 0:
+                print(e)

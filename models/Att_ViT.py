@@ -79,29 +79,35 @@ class Attention(nn.Module):
 
     def forward(self, x):
         B, N, C = x.shape
+        tmp = x.clone().detach()
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        tmp = self.qkv(tmp).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
+        q_tmp, k_tmp, v_tmp = tmp[0], tmp[1], tmp[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        tmp = (q_tmp @ k_tmp.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
+        tmp = tmp.softmax(dim=-1)
         B, H, N, _ = attn.shape
-        tmp = attn.permute(1, 0, 2, 3)
+        tmp = tmp.permute(1, 0, 2, 3)
         N = N - 1
         tmp = tmp[:, :, 1:, 1:]
         id_dist = torch.arange(N).reshape((1, N)) - torch.arange(N).reshape((N, 1))
         dist_map = torch.sqrt((torch.abs(id_dist) % N ** 0.5) ** 2 + (id_dist // N ** 0.5) ** 2)
-        head_dist = torch.sum(tmp * dist_map.to(device='cuda'), (1, 2, 3)) / torch.sum(attn, (1, 2, 3))
+        head_dist = torch.sum(tmp * dist_map.to(device='cuda'), (1, 2, 3)) / torch.sum(tmp, (1, 2, 3))
+        head_dist = head_dist / N ** 0.5
+        N = N + 1
         attn = self.attn_drop(attn)
 
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        x = self.proj_drop(x, attn)
+        x = self.proj_drop(x)
         return x, head_dist
 
 
 class Block(nn.Module):
-
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0., drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -113,7 +119,7 @@ class Block(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x):
-        if isinstance(x, list):
+        if isinstance(x, tuple):
             x, blocks_attn = x
             x, block_attn = self.attn(self.norm1(x))
             blocks_attn = torch.cat((blocks_attn, block_attn.unsqueeze(0)))
@@ -452,7 +458,7 @@ def att_vit_tiny_patch16_224(pretrained=False, **kwargs):
     """ ViT-Tiny (Vit-Ti/16)
     """
     model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, **kwargs)
-    model = _create_vision_transformer('custom_vit_tiny_patch16_224', pretrained=pretrained, **model_kwargs)
+    model = _create_vision_transformer('att_vit_tiny_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
 
 
@@ -462,7 +468,7 @@ def att_vit_small_patch16_224(pretrained=False, **kwargs):
     NOTE I've replaced my previous 'small' model definition and weights with the small variant from the DeiT paper
     """
     model_kwargs = dict(patch_size=16, embed_dim=384, depth=12, num_heads=6, **kwargs)
-    model = _create_vision_transformer('custom_vit_small_patch16_224', pretrained=pretrained, **model_kwargs)
+    model = _create_vision_transformer('att_vit_small_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
 
 
@@ -471,7 +477,7 @@ def att_vit_small_patch32_224(pretrained=False, **kwargs):
     """ ViT-Small (ViT-S/32)
     """
     model_kwargs = dict(patch_size=32, embed_dim=384, depth=12, num_heads=6, **kwargs)
-    model = _create_vision_transformer('custom_vit_small_patch32_224', pretrained=pretrained, **model_kwargs)
+    model = _create_vision_transformer('att_vit_small_patch32_224', pretrained=pretrained, **model_kwargs)
     return model
 
 
@@ -481,7 +487,7 @@ def att_vit_base_patch16_224(pretrained=False, **kwargs):
     ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
     """
     model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
-    model = _create_vision_transformer('custom_vit_base_patch16_224', pretrained=pretrained, **model_kwargs)
+    model = _create_vision_transformer('att_vit_base_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
 
 
@@ -491,5 +497,5 @@ def att_vit_base_patch32_224(pretrained=False, **kwargs):
     ImageNet-1k weights fine-tuned from in21k, source https://github.com/google-research/vision_transformer.
     """
     model_kwargs = dict(patch_size=32, embed_dim=768, depth=12, num_heads=12, **kwargs)
-    model = _create_vision_transformer('custom_vit_base_patch32_224', pretrained=pretrained, **model_kwargs)
+    model = _create_vision_transformer('att_vit_base_patch32_224', pretrained=pretrained, **model_kwargs)
     return model

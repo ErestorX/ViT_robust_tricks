@@ -832,7 +832,7 @@ def get_accuracy_and_attention(model, name_model, loader, loss_fn, summary, args
         for batch_idx, (input, target) in enumerate(loader):
             last_batch = batch_idx == last_idx
             output = model(input)
-            statistics = update_attention_stat(qkvs, statistics, batch_idx, patch_size, t2t, performer)
+            statistics = update_attention_stat(model, qkvs, statistics, batch_idx, patch_size, t2t, performer)
             if isinstance(output, (tuple, list)):
                 output = output[0]
 
@@ -859,6 +859,12 @@ def get_accuracy_and_attention(model, name_model, loader, loss_fn, summary, args
 
         summary['Metrics_cln'] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
         summary['AttDist_cln'] = list(statistics.values())
+        avgHead = []
+        stdHead = []
+        for block in summary['AttDist_cln']:
+            avgHead.append(block['avgHead'])
+            stdHead.append(block['stdHead'])
+        summary['AttDist_cln'] = {'avgHead': avgHead, 'stdHead': stdHead}
 
 
 def get_attack_accuracy_and_attention(model, name_model, loader, loss_fn, summary, args, epsilonMax=0.062, pgd_steps=1, step_size=1):
@@ -913,7 +919,7 @@ def get_attack_accuracy_and_attention(model, name_model, loader, loss_fn, summar
                 input = input_orig + torch.clamp(input - input_orig, -epsilonMax, epsilonMax)
                 input = torch.clamp(input, -1, 1).detach()
             output = model(input)
-            statistics = update_attention_stat(qkvs, statistics, batch_idx, patch_size, t2t, performer)
+            statistics = update_attention_stat(model, qkvs, statistics, batch_idx, patch_size, t2t, performer)
             if isinstance(output, (tuple, list)):
                 output = output[0]
 
@@ -940,3 +946,9 @@ def get_attack_accuracy_and_attention(model, name_model, loader, loss_fn, summar
 
         summary[key_metrics] = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
         summary[key_attDist] = list(statistics.values())
+        avgHead = []
+        stdHead = []
+        for block in summary[key_attDist]:
+            avgHead.append(block['avgHead'])
+            stdHead.append(block['stdHead'])
+        summary[key_attDist] = {'avgHead': avgHead, 'stdHead': stdHead}

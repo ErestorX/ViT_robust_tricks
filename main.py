@@ -26,6 +26,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
 import models
+from losses import *
 
 from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 from timm.models import create_model, safe_model_name, resume_checkpoint, load_checkpoint, \
@@ -299,6 +300,8 @@ parser.add_argument('--depth', default=None, type=int,
                     help='set the depth of the model')
 parser.add_argument('--attention_loss', action='store_true', default=False,
                     help='use auxiliary attention loss')
+parser.add_argument('--attention_loss_weight', default=0.3, type=float,
+                    help='set the weight of the auxiliary attention loss')
 
 
 def _parse_args():
@@ -316,7 +319,10 @@ def _parse_args():
         args.model = 'custom_' + args.model
     if args.depth is not None:
         args.model = args.model + '_custom_depth'
-
+    if args.attention_loss:
+        args.model = 'att_' + args.model
+    else:
+        args.attention_loss_weight = 0.0
     # Cache the args as a text string to save them in the output dir later
     args_text = yaml.safe_dump(args.__dict__, default_flow_style=False)
     return args, args_text
@@ -588,6 +594,7 @@ def main():
             train_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
     else:
         train_loss_fn = nn.CrossEntropyLoss()
+    aux_loss_fn = AttentionProfileLoss(policy='max', operation='mean') if args.attention_loss else None
     train_loss_fn = train_loss_fn.cuda()
     validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
@@ -609,7 +616,7 @@ def main():
         saver = CheckpointSaver(
             model=model, optimizer=optimizer, args=args, model_ema=model_ema, amp_scaler=loss_scaler,
             checkpoint_dir=output_dir, recovery_dir=output_dir, decreasing=decreasing, max_history=args.checkpoint_hist)
-        with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
+        with open(os.path.join(output_dir, 'args_attention_vit.yaml'), 'w') as f:
             f.write(args_text)
 
     writer = SummaryWriter(log_dir=output_dir)
@@ -622,7 +629,8 @@ def main():
             train_metrics = train_one_epoch(
                 epoch, model, loader_train, optimizer, train_loss_fn, args,
                 lr_scheduler=lr_scheduler, saver=saver, output_dir=output_dir,
-                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn, writer=writer)
+                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn,
+                writer=writer, aux_loss_fn=aux_loss_fn, aux_loss_weight=args.attention_loss_weight)
 
             if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
                 if args.local_rank == 0:
@@ -662,7 +670,7 @@ def main():
 def train_one_epoch(
         epoch, model, loader, optimizer, loss_fn, args,
         lr_scheduler=None, saver=None, output_dir=None, amp_autocast=suppress,
-        loss_scaler=None, model_ema=None, mixup_fn=None, writer=None):
+        loss_scaler=None, model_ema=None, mixup_fn=None, writer=None, aux_loss_fn=None, aux_loss_weight=0.0):
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
         if args.prefetcher and loader.mixup_enabled:
             loader.mixup_enabled = False
@@ -692,7 +700,12 @@ def train_one_epoch(
 
         with amp_autocast():
             output = model(input)
-            loss = loss_fn(output, target)
+            if aux_loss_fn is not None:
+                output, attention = output
+                aux_loss = aux_loss_fn(attention) * aux_loss_weight
+            else:
+                aux_loss = 0.0
+            loss = (1 - aux_loss_weight) * loss_fn(output, target) + aux_loss
 
         if args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None:
             target = torch.argmax(target, dim=1)
