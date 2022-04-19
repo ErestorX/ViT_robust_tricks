@@ -42,16 +42,11 @@ class Attention(nn.Module):
     def forward(self, x):
         B, N, C = x.shape
         tmp = x.clone().detach()
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.in_dim).permute(2, 0, 3, 1, 4)
         tmp = self.qkv(tmp).reshape(B, N, 3, self.num_heads, self.in_dim).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
         q_tmp, k_tmp, v_tmp = tmp[0], tmp[1], tmp[2]
-
-        attn = (q * self.scale) @ k.transpose(-2, -1)
         tmp = (q_tmp * self.scale) @ k_tmp.transpose(-2, -1)
-        attn = attn.softmax(dim=-1)
         tmp = tmp.softmax(dim=-1)
-        B, H, N, _ = attn.shape
+        B, H, N, _ = tmp.shape
         tmp = tmp.permute(1, 0, 2, 3)
         N = N - 1
         tmp = tmp[:, :, 1:, 1:]
@@ -59,8 +54,12 @@ class Attention(nn.Module):
         dist_map = torch.sqrt((torch.abs(id_dist) % N ** 0.5) ** 2 + (id_dist // N ** 0.5) ** 2)
         head_dist = torch.sum(tmp * dist_map.to(device='cuda'), (1, 2, 3)) / torch.sum(tmp, (1, 2, 3))
         N = N + 1
-        attn = self.attn_drop(attn)
 
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.in_dim).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        attn = (q * self.scale) @ k.transpose(-2, -1)
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.in_dim)
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -86,16 +85,11 @@ class AttentionBlock(nn.Module):
     def forward(self, x):
         B, N, C = x.shape
         tmp = x.clone().detach()
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         tmp = self.qkv(tmp).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
         q_tmp, k_tmp, v_tmp = tmp[0], tmp[1], tmp[2]
-
-        attn = (q @ k.transpose(-2, -1)) * self.scale
         tmp = (q_tmp @ k_tmp.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
         tmp = tmp.softmax(dim=-1)
-        B, H, N, _ = attn.shape
+        B, H, N, _ = tmp.shape
         tmp = tmp.permute(1, 0, 2, 3)
         N = N - 1
         tmp = tmp[:, :, 1:, 1:]
@@ -103,6 +97,11 @@ class AttentionBlock(nn.Module):
         dist_map = torch.sqrt((torch.abs(id_dist) % N ** 0.5) ** 2 + (id_dist // N ** 0.5) ** 2)
         head_dist = torch.sum(tmp * dist_map.to(device='cuda'), (1, 2, 3)) / torch.sum(tmp, (1, 2, 3))
         N = N + 1
+
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
@@ -122,7 +121,6 @@ class Block(nn.Module):
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
-
 
     def forward(self, x):
         if isinstance(x, tuple):
@@ -282,7 +280,7 @@ class T2T_ViT(nn.Module):
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
                  drop_path_rate=0., norm_layer=nn.LayerNorm, token_dim=64):
         super().__init__()
-        self.num_head = num_heads
+        self.num_heads = num_heads
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
 
@@ -297,7 +295,7 @@ class T2T_ViT(nn.Module):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.blocks = nn.ModuleList([
             Block(
-                dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
+                dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
@@ -331,7 +329,7 @@ class T2T_ViT(nn.Module):
     def forward_features(self, x):
         B = x.shape[0]
         x, blocks_attn = self.tokens_to_token(x)
-        blocks_attn = blocks_attn.repeat(1, self.num_head)
+        blocks_attn = blocks_attn.repeat(1, self.num_heads)
 
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
