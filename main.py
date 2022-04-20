@@ -700,9 +700,16 @@ def train_one_epoch(
 
         with amp_autocast():
             output = model(input)
-            if aux_loss_fn is not None and epoch >= args.warmup_epochs:
+            if aux_loss_fn is not None:
                 output, attention = output
                 aux_loss = aux_loss_fn(attention) * aux_loss_weight
+                # if epoch >= args.warmup_epochs:
+                #     output, attention = output
+                #     aux_loss = aux_loss_fn(attention) * aux_loss_weight
+                # else:
+                #     output, attention = output
+                #     aux_loss = 0.0
+                #     aux_loss_weight = 0.0
             else:
                 aux_loss = 0.0
             loss = (1 - aux_loss_weight) * loss_fn(output, target) + aux_loss
